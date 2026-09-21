@@ -1,0 +1,19 @@
+# Securis - Git attributes
+# Normalise line endings in the repository to LF so the project behaves the
+# same on Windows, macOS and Linux (and inside Docker). Git converts to CRLF in
+# the working tree on Windows if core.autocrlf is enabled.
+
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+
+# Lockfile is generated; keep it out of diffs noise.
+package-lock.json linguist-generated=true
