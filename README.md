@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 1 of 22 — Project Foundation.** The application shell, routing, theme and tooling are in place. Security functionality is added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 2 of 22 — Database Architecture.** The application shell, routing, theme, tooling and the complete PostgreSQL data model (migrations + realistic seed) are in place. Security functionality is added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -30,7 +30,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | Phase | Area | Status |
 | --- | --- | --- |
 | 1 | Project foundation, SOC UI shell, routing | ✅ Complete |
-| 2 | Database architecture (Prisma + PostgreSQL) | ⏳ Planned |
+| 2 | Database architecture (Prisma + PostgreSQL) | ✅ Complete |
 | 3 | Authentication & RBAC | ⏳ Planned |
 | 4 | Log ingestion pipeline | ⏳ Planned |
 | 5 | Event management | ⏳ Planned |
@@ -95,6 +95,54 @@ utils/        Pure utility functions
 tests/        Automated test suites (Phase 19)
 ```
 
+## Database architecture
+
+The schema lives in [`database/prisma/schema.prisma`](./database/prisma/schema.prisma) and models the full SIEM pipeline.
+
+| Model | Role in the pipeline |
+| --- | --- |
+| `SecurityEvent` | Normalised telemetry — the core record every collector produces |
+| `DetectionRule` | Database-stored rules the detection engine evaluates (rules are data, not code) |
+| `Alert` | A detection that fired, linked to its rule and related events |
+| `Incident` | A coordinated investigation built from one or more alerts |
+| `ThreatIndicator` | Local threat intelligence (IP / domain / hash / URL) |
+| `AuditLog` | Immutable record of every privileged action |
+| `User` | Analyst / administrator accounts with RBAC roles |
+| `LoginSession` | Database-backed sessions (only a token hash is stored) |
+
+Key relationships:
+
+```
+SecurityEvent >──< Alert >──< Incident
+DetectionRule ──< Alert
+User ──< LoginSession · Alert(assignee) · Incident(assignee) · DetectionRule(creator) · AuditLog(actor)
+Alert ──< AlertNote >── User        Incident ──< IncidentNote >── User
+```
+
+Indexes are chosen for the query patterns of later phases: event filtering
+(`timestamp`, `sourceIp`, `username`, `eventType`, `severity` plus time-series
+composites), the alert queue (`status`, `severity`, `(status,severity)`), and
+the audit trail (`action`, `actorId`, `(targetType,targetId)`).
+
+### Seed data
+
+`npm run db:seed` creates a deterministic, realistic dataset: 5 users, 7
+detection rules, 8 threat indicators, **757 security events**, 7 alerts, 3
+incidents, login sessions and 31 audit-log entries. The events include seven
+scripted attack scenarios (brute force, account takeover, privilege escalation,
+API abuse, unauthorized access, sensitive-resource access and a suspicious login
+pattern) that the Phase 6/7 detection engine genuinely re-detects.
+
+Development credentials created by the seed (never used in production):
+
+| Role | Email | Password |
+| --- | --- | --- |
+| ADMIN | `admin@securis.local` | `SecurisAdmin#2026` |
+| SECURITY_ANALYST | `analyst@securis.local` | `SecurisAnalyst#2026` |
+| VIEWER | `viewer@securis.local` | `SecurisViewer#2026` |
+
+Passwords are hashed with **Argon2id** before storage.
+
 ## Getting started
 
 ### Prerequisites
@@ -132,7 +180,15 @@ npx prisma dev --detach
 
 Copy the connection strings it prints into `.env`. See the [Prisma local Postgres docs](https://www.prisma.io/docs/local-development/postgres) for details.
 
-### 4. Run the app
+### 4. Apply migrations and seed
+
+```bash
+npm run db:migrate
+npm run db:seed
+npm run db:verify   # optional: prints the seeded data and attack scenarios
+```
+
+### 5. Run the app
 
 ```bash
 npm run dev
@@ -148,8 +204,9 @@ Open <http://localhost:3000>.
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript, no emit |
-| `npm run db:migrate` | Apply Prisma migrations (Phase 2+) |
-| `npm run db:seed` | Seed the database (Phase 2+) |
+| `npm run db:migrate` | Apply Prisma migrations |
+| `npm run db:seed` | Seed the database with realistic data |
+| `npm run db:verify` | Run real queries to verify the seeded data |
 | `npm run db:studio` | Open Prisma Studio |
 
 ## Docker
