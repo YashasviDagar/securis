@@ -1,0 +1,29 @@
+// Securis - Prisma schema (Phase 1 foundation)
+//
+// This file is the single source of truth for the PostgreSQL database schema.
+// Phase 1 establishes the datasource and generator so `prisma generate`,
+// `prisma validate` and the application build all work end-to-end.
+//
+// Phase 2 adds the full security data model:
+//   User, SecurityEvent, Alert, Incident, DetectionRule, ThreatIndicator,
+//   AuditLog, LoginSession  (+ enums, relations, indexes and timestamps).
+//
+// Connection: read by the Prisma CLI (scripts in package.json) and by the
+// generated client imported in database/client.ts.
+
+generator client {
+  // The standard Prisma Client generator. The generated client is consumed
+  // through the singleton in database/client.ts so the Next.js dev server does
+  // not open a new connection pool on every hot reload.
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // PostgreSQL is required for enums, JSONB metadata and rich indexing.
+  // Development uses a local Prisma Postgres instance (`npx prisma dev`);
+  // production uses Neon PostgreSQL. Only the DATABASE_URL value changes.
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Shadow database used by `prisma migrate dev` to detect schema drift.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
