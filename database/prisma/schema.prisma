@@ -1,29 +1,446 @@
-// Securis - Prisma schema (Phase 1 foundation)
+// =============================================================================
+// Securis - Prisma schema (Phase 2: Database Architecture)
+// =============================================================================
+// Single source of truth for the Securis SIEM data model.
 //
-// This file is the single source of truth for the PostgreSQL database schema.
-// Phase 1 establishes the datasource and generator so `prisma generate`,
-// `prisma validate` and the application build all work end-to-end.
+// Pipeline context:
+//   SecurityEvent  <- normalised security telemetry (the raw material)
+//   DetectionRule  <- rules the detection engine evaluates against events
+//   Alert          <- a detection fired (one or more related events)
+//   Incident       <- a coordinated investigation built from alerts
+//   ThreatIndicator<- local threat intelligence used to enrich risk
+//   AuditLog       <- immutable record of privileged actions
+//   User           <- analyst/admin accounts (RBAC)
+//   LoginSession   <- database-backed authenticated sessions
 //
-// Phase 2 adds the full security data model:
-//   User, SecurityEvent, Alert, Incident, DetectionRule, ThreatIndicator,
-//   AuditLog, LoginSession  (+ enums, relations, indexes and timestamps).
-//
-// Connection: read by the Prisma CLI (scripts in package.json) and by the
-// generated client imported in database/client.ts.
+// Connection: consumed by database/client.ts (runtime) and the Prisma CLI
+// (migrations/seed). Enum values mirror types/security.ts exactly.
+// =============================================================================
 
 generator client {
-  // The standard Prisma Client generator. The generated client is consumed
-  // through the singleton in database/client.ts so the Next.js dev server does
-  // not open a new connection pool on every hot reload.
   provider = "prisma-client-js"
 }
 
 datasource db {
-  // PostgreSQL is required for enums, JSONB metadata and rich indexing.
-  // Development uses a local Prisma Postgres instance (`npx prisma dev`);
-  // production uses Neon PostgreSQL. Only the DATABASE_URL value changes.
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  // Shadow database used by `prisma migrate dev` to detect schema drift.
+  // PostgreSQL is required for native enums, JSONB metadata and rich indexing.
+  // Development: local Prisma Postgres (`npx prisma dev`).
+  // Production:  Neon PostgreSQL. Only the URL values change.
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+/// RBAC roles. Ordered from most to least privileged.
+enum Role {
+  ADMIN
+  SECURITY_ANALYST
+  VIEWER
+}
+
+/// Event / alert / incident severity. Base weights live in types/security.ts.
+enum Severity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Where a security event came from. Drives parser selection in Phase 4.
+enum SourceType {
+  AUTH
+  WEB
+  API
+  SERVER
+  DATABASE
+  NETWORK
+  INFRASTRUCTURE
+  APPLICATION
+}
+
+/// Alert lifecycle (Phase 9).
+enum AlertStatus {
+  NEW
+  INVESTIGATING
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+/// Incident lifecycle (Phase 10).
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  CONTAINED
+  RESOLVED
+  CLOSED
+}
+
+/// Threat intelligence indicator kinds (Phase 11).
+enum IndicatorType {
+  IP
+  DOMAIN
+  HASH
+  URL
+}
+
+/// The detection strategy a rule uses (Phase 6).
+enum RuleType {
+  EVENT_MATCH
+  THRESHOLD
+  TIME_WINDOW
+  CORRELATION
+  USER_BASED
+  IP_BASED
+}
+
+/// Every privileged action recorded in the audit trail (Phase 15).
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  SESSION_CREATED
+  SESSION_EXPIRED
+  SESSION_REVOKED
+  USER_CREATED
+  USER_UPDATED
+  USER_ENABLED
+  USER_DISABLED
+  ROLE_CHANGED
+  ALERT_CREATED
+  ALERT_UPDATED
+  ALERT_ASSIGNED
+  ALERT_STATUS_CHANGED
+  ALERT_NOTE_ADDED
+  INCIDENT_CREATED
+  INCIDENT_UPDATED
+  INCIDENT_RESOLVED
+  INCIDENT_CLOSED
+  INCIDENT_NOTE_ADDED
+  RULE_CREATED
+  RULE_UPDATED
+  RULE_ENABLED
+  RULE_DISABLED
+  RULE_DELETED
+  THREAT_INDICATOR_ADDED
+  THREAT_INDICATOR_UPDATED
+  EVENT_INGESTED
+  SIMULATION_RUN
+}
+
+// =============================================================================
+// Identity
+// =============================================================================
+
+/// An analyst, administrator or read-only viewer of the SOC console.
+/// Passwords are ALWAYS stored as Argon2id hashes - never in plaintext.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  /// Argon2id hash produced in Phase 3. Never exposed to the client.
+  passwordHash String
+  role         Role     @default(VIEWER)
+  /// Disabled accounts are rejected at authentication time.
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  sessions          LoginSession[]
+  assignedAlerts    Alert[]         @relation("AlertAssignee")
+  authoredNotes     AlertNote[]     @relation("AlertNoteAuthor")
+  assignedIncidents Incident[]      @relation("IncidentAssignee")
+  incidentNotes     IncidentNote[]  @relation("IncidentNoteAuthor")
+  createdRules      DetectionRule[] @relation("RuleCreatedBy")
+  auditLogs         AuditLog[]      @relation("AuditActor")
+
+  // Indexes: role/isActive power the user management screens and RBAC checks.
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+/// A database-backed authenticated session. The raw session token is never
+/// stored - only its SHA-256 hash - so a database leak cannot be replayed.
+model LoginSession {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 hash of the opaque session token stored in the cookie.
+  tokenHash  String    @unique
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  /// Set when the user logs out or an administrator revokes the session.
+  revokedAt  DateTime?
+
+  // Indexes: lookups by user, by expiry (cleanup job) and by creation time.
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// Telemetry
+// =============================================================================
+
+/// A normalised security event. This is the core record of the SIEM: every
+/// collector (auth service, web app, API, server agent, simulator) ultimately
+/// produces one of these.
+model SecurityEvent {
+  id            String     @id @default(cuid())
+  /// When the event occurred at the source (not when it was ingested).
+  timestamp     DateTime
+  /// Logical producer, e.g. "authentication-service".
+  source        String
+  sourceType    SourceType
+  /// Normalised event type, e.g. "LOGIN_FAILED", "API_REQUEST".
+  eventType     String
+  severity      Severity
+  username      String?
+  sourceIp      String?
+  destinationIp String?
+  userAgent     String?
+  /// The resource acted upon, e.g. "/admin", "/users", "users-table".
+  resource      String?
+  /// The verb, e.g. "READ", "WRITE", "LOGIN", "DELETE".
+  action        String?
+  /// Outcome, e.g. "SUCCESS", "FAILURE", "401", "403".
+  status        String?
+  message       String
+  /// Free-form structured context (request ids, geolocation, raw payload...).
+  metadata      Json?
+  createdAt     DateTime   @default(now())
+
+  // Relations: an event may be linked to the alerts and incidents it contributed
+  // to (many-to-many, since one event can trigger several detections).
+  alerts    Alert[]
+  incidents Incident[]
+
+  // Indexes: the event explorer (Phase 5) filters on exactly these columns.
+  @@index([timestamp])
+  @@index([sourceIp])
+  @@index([username])
+  @@index([eventType])
+  @@index([severity])
+  @@index([source])
+  @@index([sourceType])
+  // Composite indexes for the detection engine's time-window queries.
+  @@index([sourceIp, timestamp])
+  @@index([username, timestamp])
+  @@index([eventType, timestamp])
+  @@index([severity, timestamp])
+}
+
+// =============================================================================
+// Detection
+// =============================================================================
+
+/// A detection rule stored in the database and evaluated by the engine.
+/// Rules are data, not code: operators can add, tune, enable and disable them
+/// without a deployment (Phase 12).
+model DetectionRule {
+  id          String   @id @default(cuid())
+  /// Stable human-readable identifier, e.g. "BRUTE_FORCE_001".
+  code        String   @unique
+  name        String
+  description String
+  ruleType    RuleType
+  severity    Severity
+  /// Structured condition evaluated by the engine. Shape (documented in
+  /// server/detection): { field, operator, value } or an aggregate spec such as
+  /// { eventType: "LOGIN_FAILED", groupBy: "sourceIp", count: 5 }.
+  condition   Json
+  /// Minimum occurrences for threshold/window rules (null for match rules).
+  threshold   Int?
+  /// Sliding window in seconds for time-window rules (null for match rules).
+  timeWindowSeconds Int?
+  enabled     Boolean  @default(true)
+  createdById String?
+  createdBy   User?    @relation("RuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  alerts Alert[]
+
+  // Indexes: the engine loads enabled rules; the UI filters by type/severity.
+  @@index([enabled])
+  @@index([ruleType])
+  @@index([severity])
+  @@index([createdAt])
+}
+
+/// A detection fired by the engine, representing one or more related events.
+model Alert {
+  id          String      @id @default(cuid())
+  title       String
+  description String
+  severity    Severity
+  status      AlertStatus @default(NEW)
+  /// Deterministic 0-100 risk score (Phase 8).
+  riskScore   Int         @default(0)
+  /// Per-factor contribution breakdown so the score is explainable.
+  riskFactors Json?
+  sourceIp    String?
+  targetUser  String?
+  ruleId      String?
+  rule        DetectionRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  firstSeen   DateTime
+  lastSeen    DateTime
+  assignedToId String?
+  assignedTo   User?   @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  notes     AlertNote[]
+  events    SecurityEvent[]
+  incidents Incident[]
+
+  // Indexes: the alert queue filters on status/severity/source/user/rule/time.
+  @@index([status])
+  @@index([severity])
+  @@index([sourceIp])
+  @@index([targetUser])
+  @@index([ruleId])
+  @@index([assignedToId])
+  @@index([firstSeen])
+  @@index([createdAt])
+  @@index([status, severity])
+}
+
+/// An analyst note attached to an alert (Phase 9).
+model AlertNote {
+  id        String   @id @default(cuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("AlertNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([alertId, createdAt])
+  @@index([authorId])
+}
+
+// =============================================================================
+// Response
+// =============================================================================
+
+/// A coordinated investigation built from one or more alerts (Phase 10).
+model Incident {
+  id          String         @id @default(cuid())
+  /// Human-readable reference, e.g. "INC-2026-001".
+  reference   String         @unique
+  title       String
+  description String
+  severity    Severity
+  status      IncidentStatus @default(OPEN)
+  assignedToId String?
+  assignedTo   User?  @relation("IncidentAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  /// Written when the incident is resolved or closed.
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  alerts Alert[]
+  events SecurityEvent[]
+  notes  IncidentNote[]
+
+  // Indexes: incident board filters on status/severity/assignee/time.
+  @@index([status])
+  @@index([severity])
+  @@index([assignedToId])
+  @@index([createdAt])
+  @@index([status, severity])
+}
+
+/// An analyst note attached to an incident (Phase 10).
+model IncidentNote {
+  id         String   @id @default(cuid())
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation("IncidentNoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([incidentId, createdAt])
+  @@index([authorId])
+}
+
+// =============================================================================
+// Threat Intelligence
+// =============================================================================
+
+/// A local threat intelligence indicator (Phase 11). When an ingested event
+/// matches an indicator, the detection engine raises the event's risk.
+model ThreatIndicator {
+  id          String        @id @default(cuid())
+  type        IndicatorType
+  /// The indicator itself: an IP, domain, file hash or URL.
+  value       String
+  /// Classification, e.g. "Botnet C2", "Phishing", "Scanner".
+  threatType  String?
+  /// Analyst/source confidence 0-100. Higher confidence amplifies risk.
+  confidence  Int           @default(50)
+  /// Where the indicator came from, e.g. "internal-honeypot", "simulated-feed".
+  source      String
+  description String?
+  firstSeen   DateTime
+  lastSeen    DateTime
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // An indicator value is unique per type.
+  @@unique([type, value])
+  @@index([value])
+  @@index([type])
+  @@index([confidence])
+  @@index([active])
+}
+
+// =============================================================================
+// Audit
+// =============================================================================
+
+/// Immutable audit trail. Ordinary users cannot edit or delete audit records;
+/// only the system appends to this table (Phase 15).
+model AuditLog {
+  id        String      @id @default(cuid())
+  /// The authenticated user who performed the action (null for anonymous
+  /// actions such as a failed login for an unknown account).
+  actorId   String?
+  actor     User?       @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  /// Denormalised actor identity captured even when no user row exists.
+  actorEmail String?
+  action    AuditAction
+  /// The kind of entity affected, e.g. "Alert", "User", "DetectionRule".
+  targetType String?
+  targetId   String?
+  /// Human-readable target label for the audit UI.
+  targetLabel String?
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  // Indexes: the audit explorer filters by action/actor/target/time/IP.
+  @@index([action])
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([ipAddress])
+  @@index([createdAt])
 }
