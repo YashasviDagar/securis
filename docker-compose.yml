@@ -1,0 +1,55 @@
+# =============================================================================
+# Securis - Docker Compose (development / self-hosted)
+# =============================================================================
+# Starts PostgreSQL and the Securis application together:
+#
+#   docker compose up --build
+#
+# Secrets are injected from the local `.env` file (copied from .env.example);
+# nothing sensitive is hard-coded here.
+#
+# Note: for the fastest local workflow you can skip Docker entirely and run
+# `npx prisma dev` for the database plus `npm run dev` for the app.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: securis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-securis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securis}
+      POSTGRES_DB: ${POSTGRES_DB:-securis}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - securis-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-securis} -d ${POSTGRES_DB:-securis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: securis-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # Override in .env to point at Neon or another managed PostgreSQL.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
+      SHADOW_DATABASE_URL: ${SHADOW_DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
+      SESSION_SECRET: ${SESSION_SECRET}
+      INGEST_API_KEY: ${INGEST_API_KEY}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  securis-pgdata:
