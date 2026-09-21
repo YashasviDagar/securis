@@ -1,0 +1,15 @@
+# Securis - Docker build context exclusions
+# Keeps the image build fast and prevents local secrets/artifacts from leaking
+# into the build context.
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+npm-debug.log*
+phase-notes
+coverage
+tests
+*.md
