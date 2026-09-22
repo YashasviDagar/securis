@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 /**
@@ -81,4 +82,16 @@ export function jsonError(
 export function describeError(error: unknown): string {
   if (error instanceof Error) return `${error.name}: ${error.message}`;
   return String(error);
+}
+
+/**
+ * Constant-time string comparison for secrets (e.g. the ingestion API key).
+ *
+ * Both inputs are hashed to a fixed length first, so the comparison time does
+ * not depend on the length or content of the attacker-supplied value.
+ */
+export function safeEqual(a: string, b: string): boolean {
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
 }
