@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 3 of 22 — Authentication & RBAC.** The application shell, routing, theme, tooling, the complete PostgreSQL data model and secure authentication with server-enforced role-based access control are in place. Remaining security functionality is added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 4 of 22 — Log Ingestion System.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC and the event ingestion pipeline are in place. Detection, alerting and response are added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -32,7 +32,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 1 | Project foundation, SOC UI shell, routing | ✅ Complete |
 | 2 | Database architecture (Prisma + PostgreSQL) | ✅ Complete |
 | 3 | Authentication & RBAC | ✅ Complete |
-| 4 | Log ingestion pipeline | ⏳ Planned |
+| 4 | Log ingestion pipeline | ✅ Complete |
 | 5 | Event management | ⏳ Planned |
 | 6 | Detection engine | ⏳ Planned |
 | 7 | Security detection rules (7 rules) | ⏳ Planned |
@@ -175,6 +175,63 @@ Authorization is enforced **server-side** in two places: the authenticated `(soc
 | `POST` | `/api/auth/login` | Authenticate and issue a session cookie |
 | `POST` | `/api/auth/logout` | Revoke the session and clear the cookie |
 | `GET` | `/api/auth/session` | Return the current user (401 when unauthenticated) |
+
+## Log ingestion
+
+Security events enter Securis through a single normalising pipeline:
+
+```
+Raw event → Zod validation → parser → normaliser → semantic validation → SecurityEvent → PostgreSQL
+```
+
+The endpoint accepts events from **web applications, authentication systems, APIs, servers, databases, networks, infrastructure and applications**. Each `sourceType` has a parser that reconciles the producer's vocabulary (`user` / `principal` / `client_ip` / `status_code`, …) onto the canonical model, so collectors can forward their native payload in a `raw` field without pre-formatting it.
+
+**Authentication** — `POST /api/ingest` accepts either an `X-Ingest-Key` header (compared in constant time) or an authenticated session whose role holds `events:ingest`. Rate limiting is applied per source IP.
+
+**Never trusting the client** — every field is validated: unknown keys are stripped, `sourceType`/`severity` are mapped to the canonical enums, IPs are validated, timestamps are checked for plausibility, messages and metadata are size-capped, and per-event rejections are reported by index so a collector can retry only what failed.
+
+```bash
+curl -X POST http://localhost:3000/api/ingest \
+  -H "Content-Type: application/json" \
+  -H "X-Ingest-Key: $INGEST_API_KEY" \
+  -d '{
+    "timestamp": "2026-09-22T10:42:21Z",
+    "source": "authentication-service",
+    "sourceType": "AUTH",
+    "eventType": "LOGIN_FAILED",
+    "severity": "MEDIUM",
+    "username": "admin",
+    "sourceIp": "192.168.1.50",
+    "message": "Failed authentication attempt"
+  }'
+```
+
+Response (`202 Accepted`, or `400` when every event in the batch was rejected):
+
+```json
+{
+  "ok": true,
+  "data": {
+    "received": 1,
+    "accepted": 1,
+    "rejected": 0,
+    "eventIds": ["..."],
+    "errors": []
+  }
+}
+```
+
+A batch of up to 500 events may be sent as a JSON array. Collectors may also forward a native payload:
+
+```json
+{
+  "source": "authentication-service",
+  "sourceType": "AUTH",
+  "raw": { "user": "Bob", "ip": "10.0.0.5", "outcome": "failed" }
+}
+```
+
+This is normalised to `LOGIN_FAILED` with severity `MEDIUM`, username `bob`, source IP `10.0.0.5`, and the original payload preserved under `metadata.raw`.
 
 ## Getting started
 
