@@ -38,8 +38,11 @@ const nextConfig: NextConfig = {
   // Hide the `X-Powered-By: Next.js` banner so we do not advertise the stack.
   poweredByHeader: false,
   // Emit a self-contained server bundle in .next/standalone so the production
-  // Docker image does not need the full node_modules tree (see docker/Dockerfile).
-  output: "standalone",
+  // Docker image does not need the full node_modules tree. This is enabled only
+  // when NEXT_OUTPUT=standalone (set in the Dockerfile), because Next.js 16's
+  // `next start` does not support the standalone output mode. Local production
+  // checks therefore keep working with the normal `.next` output.
+  output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   async headers() {
     return [
       {
