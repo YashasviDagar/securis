@@ -29,7 +29,8 @@ COPY . .
 # only reads the schema; it never connects to the database.
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db"
 RUN npx prisma generate --schema=database/prisma/schema.prisma
-# Produces .next/standalone because next.config.ts sets output: "standalone".
+# Enable Next.js standalone output for the runtime image (see next.config.ts).
+ENV NEXT_OUTPUT=standalone
 RUN npm run build
 
 # ---- Stage 3: runtime ------------------------------------------------------
