@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Info, ShieldHalf } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { redirect } from "next/navigation";
+import { ShieldHalf } from "lucide-react";
+import { LoginForm } from "@/components/auth/login-form";
 import {
   Card,
   CardContent,
@@ -10,22 +9,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getCurrentSession } from "@/auth/current-user";
 
 export const metadata: Metadata = { title: "Sign in · Securis" };
 
 /**
  * /login - Authentication entry point.
  *
- * Phase 1 status: the secure authentication system (Argon2id password hashing,
- * database-backed sessions, login rate limiting and RBAC) is implemented in
- * Phase 3. Rather than shipping a login form that silently does nothing, this
- * screen honestly reports its status and offers a working link into the
- * console.
+ * Server component. If a valid session already exists the operator is sent
+ * straight to the dashboard, so the login form is never shown to an
+ * authenticated user. The credential check itself happens in
+ * `/api/auth/login` (see components/auth/login-form.tsx).
  *
- * Phase 3 replaces this file with the real credentials form posting to the
- * server-side session endpoint.
+ * Connection: auth/current-user.ts (session lookup) and the login API route.
  */
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await getCurrentSession();
+  if (session) {
+    redirect("/dashboard");
+  }
+
   return (
     <Card className="border-border/60 shadow-lg">
       <CardHeader className="items-center text-center">
@@ -38,20 +41,8 @@ export default function LoginPage() {
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <Alert>
-          <Info className="size-4" aria-hidden="true" />
-          <AlertTitle>Authentication arrives in Phase 3</AlertTitle>
-          <AlertDescription>
-            Secure sign-in with hashed credentials, server-side sessions and
-            role-based access control is implemented in Phase 3. Until then the
-            console runs in unauthenticated foundation mode.
-          </AlertDescription>
-        </Alert>
-
-        <Button asChild className="w-full">
-          <Link href="/dashboard">Open the console</Link>
-        </Button>
+      <CardContent>
+        <LoginForm />
       </CardContent>
     </Card>
   );
