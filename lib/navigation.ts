@@ -82,6 +82,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: ShieldAlert,
         description: "Rules the detection engine evaluates against every event.",
         phase: 12,
+        allowedRoles: ["ADMIN"],
+        requiredPermission: "rules:write",
       },
       {
         title: "Threat Intelligence",
@@ -96,6 +98,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: BookOpen,
         description: "Safely generate controlled attack traffic against local test data.",
         phase: 14,
+        allowedRoles: ["ADMIN", "SECURITY_ANALYST"],
+        requiredPermission: "simulation:run",
       },
     ],
   },
@@ -109,6 +113,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         description: "Analyst accounts, roles and login activity.",
         phase: 16,
         allowedRoles: ["ADMIN"],
+        requiredPermission: "users:read",
       },
       {
         title: "Audit Logs",
@@ -117,6 +122,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         description: "Immutable record of every privileged action in Securis.",
         phase: 15,
         allowedRoles: ["ADMIN"],
+        requiredPermission: "audit:read",
       },
       {
         title: "Settings",
