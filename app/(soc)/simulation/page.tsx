@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
 import { NavModulePage } from "@/components/shared/nav-module-page";
+import { requirePermission } from "@/auth/current-user";
 
 export const metadata: Metadata = { title: "Attack Simulation · Securis" };
 
 /**
  * /simulation - Controlled attack simulation laboratory.
  *
- * Phase 14 replaces this scaffold with the buttons that generate *local* test
- * events (brute force, account takeover, ...) which flow through the real
- * ingestion and detection pipeline. It never targets external systems.
+ * Server-side authorization: administrators and security analysts only
+ * (`simulation:run`); viewers cannot generate traffic.
+ *
+ * Phase 14 replaces the scaffold with the buttons that drive the real ingestion
+ * and detection pipeline against local test data.
  */
-export default function SimulationPage() {
+export default async function SimulationPage() {
+  await requirePermission("simulation:run");
   return <NavModulePage href="/simulation" />;
 }
