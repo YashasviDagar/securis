@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { Role } from "./security";
+import type { Permission } from "@/auth/rbac";
 
 /**
  * Securis - Navigation types
@@ -23,6 +24,12 @@ export interface NavItem {
    * server-side in Phase 3 and beyond.
    */
   allowedRoles?: readonly Role[];
+  /**
+   * The capability required to open this route. Enforced server-side by the
+   * (soc) layout before the page renders (see app/(soc)/layout.tsx). When
+   * omitted the route only requires an authenticated session.
+   */
+  requiredPermission?: Permission;
   /**
    * Build phase in which this module becomes fully functional. Until then the
    * page renders an explicit "not yet implemented" empty state rather than
