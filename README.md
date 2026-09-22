@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 2 of 22 — Database Architecture.** The application shell, routing, theme, tooling and the complete PostgreSQL data model (migrations + realistic seed) are in place. Security functionality is added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 3 of 22 — Authentication & RBAC.** The application shell, routing, theme, tooling, the complete PostgreSQL data model and secure authentication with server-enforced role-based access control are in place. Remaining security functionality is added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -31,7 +31,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | --- | --- | --- |
 | 1 | Project foundation, SOC UI shell, routing | ✅ Complete |
 | 2 | Database architecture (Prisma + PostgreSQL) | ✅ Complete |
-| 3 | Authentication & RBAC | ⏳ Planned |
+| 3 | Authentication & RBAC | ✅ Complete |
 | 4 | Log ingestion pipeline | ⏳ Planned |
 | 5 | Event management | ⏳ Planned |
 | 6 | Detection engine | ⏳ Planned |
@@ -142,6 +142,39 @@ Development credentials created by the seed (never used in production):
 | VIEWER | `viewer@securis.local` | `SecurisViewer#2026` |
 
 Passwords are hashed with **Argon2id** before storage.
+
+## Authentication & RBAC
+
+Securis uses a custom, database-backed session system (no third-party auth provider) so the security engineering is explicit and auditable.
+
+**Authentication**
+
+- Passwords are hashed with **Argon2id** (OWASP baseline parameters) and verified with the same module used by the seed — plaintext is never stored or logged.
+- On login the server creates an opaque 256-bit token, stores only its **SHA-256 hash** in `LoginSession`, and returns the token in an **HttpOnly, SameSite=Lax** cookie (`Secure` automatically for HTTPS deployments).
+- Sessions have an absolute expiry, are refreshed lazily (`lastSeenAt`, throttled) and can be revoked individually. Expired sessions are deleted and recorded as `SESSION_EXPIRED`.
+- **Rate limiting** is applied per source IP *and* per account using a sliding window (default 5 attempts / 5 minutes).
+- **Account-enumeration resistance:** unknown email, wrong password and disabled account all return the same generic message, and a dummy hash is verified when the account does not exist so response timing does not reveal whether an email is registered.
+- A **disabled account loses access immediately**, even with a valid session.
+
+**Role-based access control**
+
+| Role | Capabilities |
+| --- | --- |
+| `ADMIN` | Manage users, detection rules, alerts, incidents and audit logs; view all events |
+| `SECURITY_ANALYST` | View events, investigate/update alerts, manage incidents, maintain threat intel, run simulations |
+| `VIEWER` | Read-only access to the console |
+
+Authorization is enforced **server-side** in two places: the authenticated `(soc)` layout checks the route's required permission before streaming (returning a real HTTP 307 on denial), and each protected page repeats the check with `requirePermission` as defence in depth. Hiding a navigation item is a convenience only — it is never the security boundary.
+
+**Audit trail** — every authentication event is recorded: `LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `SESSION_CREATED`, `SESSION_EXPIRED` and `SESSION_REVOKED`.
+
+**API endpoints**
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | Authenticate and issue a session cookie |
+| `POST` | `/api/auth/logout` | Revoke the session and clear the cookie |
+| `GET` | `/api/auth/session` | Return the current user (401 when unauthenticated) |
 
 ## Getting started
 
