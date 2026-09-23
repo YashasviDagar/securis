@@ -318,15 +318,7 @@ export async function getAlertFacets(): Promise<AlertFacets> {
 const RESOLVING_STATUSES = new Set<AlertStatus>(["RESOLVED", "FALSE_POSITIVE"]);
 
 /** Active users who can be assigned an alert (used by the actions panel). */
-export async function getAssignableUsers(): Promise<
-  { id: string; name: string; email: string }[]
-> {
-  return prisma.user.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true, email: true },
-    orderBy: { name: "asc" },
-  });
-}
+export { getAssignableUsers } from "@/server/services/user-service";
 
 export interface MutationActor {
   id: string;
