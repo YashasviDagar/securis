@@ -25,6 +25,7 @@ export interface UpsertAlertResult {
   title: string;
   severity: Severity;
   status: AlertStatus;
+  riskScore: number;
   created: boolean;
 }
 
@@ -61,7 +62,7 @@ export async function upsertAlertFromFinding(
         riskFactors: riskFactorsJson(finding),
         ...eventLinks,
       },
-      select: { id: true, title: true, severity: true, status: true },
+      select: { id: true, title: true, severity: true, status: true, riskScore: true },
     });
     return { ...alert, created: false };
   }
@@ -82,7 +83,7 @@ export async function upsertAlertFromFinding(
       dedupeKey: finding.dedupeKey,
       ...eventLinks,
     },
-    select: { id: true, title: true, severity: true, status: true },
+    select: { id: true, title: true, severity: true, status: true, riskScore: true },
   });
 
   await recordAudit({
