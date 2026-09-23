@@ -1,10 +1,12 @@
 import { prisma } from "@/database/client";
 import { parseCondition } from "@/lib/validation/detection";
 import { resolveThreshold, resolveWindowSeconds } from "./conditions";
+import { computeRisk } from "./risk";
 import { evaluateEventMatch } from "./rules/event-match";
 import { evaluateAggregate } from "./rules/threshold";
 import { evaluateCorrelation } from "./rules/correlation";
 import { evaluateUserBased } from "./rules/user-based";
+import { matchIndicator } from "@/server/threat-intel/matcher";
 import { upsertAlertFromFinding } from "@/server/services/alert-service";
 import { describeError } from "@/utils/errors";
 import type {
@@ -67,6 +69,60 @@ async function evaluateRule(
     default:
       return [];
   }
+}
+
+/**
+ * Count how many times this exact rule+group fired in *earlier* windows.
+ * Used as the "repeated behaviour" risk factor. The current window's key is
+ * excluded so a finding never counts itself (keeping re-scans deterministic).
+ */
+async function countPriorOccurrences(finding: DetectionFinding): Promise<number> {
+  const prefix = `${finding.ruleCode}:${finding.groupValue ?? "global"}:`;
+  return prisma.alert.count({
+    where: {
+      dedupeKey: { startsWith: prefix, not: finding.dedupeKey },
+    },
+  });
+}
+
+/**
+ * Enrich a finding with threat-intelligence and repeated-behaviour context and
+ * compute its deterministic risk score. Called for every finding before it is
+ * persisted, so the engine owns scoring in one place.
+ */
+async function scoreFinding(finding: DetectionFinding): Promise<DetectionFinding> {
+  const [indicator, priorOccurrences] = await Promise.all([
+    matchIndicator({ ip: finding.sourceIp }),
+    countPriorOccurrences(finding),
+  ]);
+
+  const { score, factors } = computeRisk({
+    severity: finding.severity,
+    ruleType: finding.ruleType,
+    eventCount: finding.eventCount,
+    threshold: finding.threshold,
+    sourceIp: finding.sourceIp,
+    targetUser: finding.targetUser,
+    threatIntel: indicator
+      ? { threatType: indicator.threatType, confidence: indicator.confidence }
+      : null,
+    priorOccurrences,
+  });
+
+  return {
+    ...finding,
+    riskScore: score,
+    riskFactors: factors,
+    threatIntel: indicator
+      ? {
+          type: indicator.type,
+          value: indicator.value,
+          threatType: indicator.threatType,
+          confidence: indicator.confidence,
+          source: indicator.source,
+        }
+      : null,
+  };
 }
 
 /**
@@ -145,7 +201,9 @@ export async function runDetection(
       result.findings += findings.length;
 
       for (const finding of findings) {
-        const alert = await upsertAlertFromFinding(finding);
+        // Score before persisting so the alert always carries a full breakdown.
+        const scored = await scoreFinding(finding);
+        const alert = await upsertAlertFromFinding(scored);
         if (alert.created) result.alertsCreated += 1;
         else result.alertsUpdated += 1;
         result.alerts.push({
@@ -153,6 +211,7 @@ export async function runDetection(
           title: alert.title,
           severity: alert.severity,
           status: alert.status,
+          riskScore: alert.riskScore,
         });
       }
     } catch (error) {
