@@ -67,6 +67,8 @@ export interface EventDetail extends EventListItem {
     title: string;
     severity: Severity;
     status: AlertStatus;
+    riskScore: number;
+    riskFactors: unknown;
   }[];
   /** Incidents this event is part of. */
   relatedIncidents: {
