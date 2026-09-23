@@ -128,6 +128,7 @@ enum AuditAction {
   THREAT_INDICATOR_ADDED
   THREAT_INDICATOR_UPDATED
   EVENT_INGESTED
+  DETECTION_SCAN
   SIMULATION_RUN
 }
 
@@ -295,6 +296,10 @@ model Alert {
   rule        DetectionRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   firstSeen   DateTime
   lastSeen    DateTime
+  /// Stable key that makes detection idempotent: repeated scans over the same
+  /// events update the existing alert instead of creating duplicates. Format:
+  /// `<ruleCode>:<groupValue>:<windowBucketStartMs>`.
+  dedupeKey   String?  @unique
   assignedToId String?
   assignedTo   User?   @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   resolvedAt   DateTime?
