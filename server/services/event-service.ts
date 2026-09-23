@@ -166,7 +166,14 @@ export async function getEventById(id: string): Promise<EventDetail | null> {
       metadata: true,
       createdAt: true,
       alerts: {
-        select: { id: true, title: true, severity: true, status: true },
+        select: {
+          id: true,
+          title: true,
+          severity: true,
+          status: true,
+          riskScore: true,
+          riskFactors: true,
+        },
         orderBy: { firstSeen: "desc" },
       },
       incidents: {
