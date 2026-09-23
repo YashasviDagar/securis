@@ -110,4 +110,14 @@ export interface IngestionResult {
   eventIds: string[];
   /** Details for each rejected event (capped for the response). */
   errors: IngestionError[];
+  /**
+   * Outcome of the detection run triggered by this ingestion (Phase 6).
+   * Absent when no events were accepted.
+   */
+  detection?: {
+    rulesEvaluated: number;
+    findings: number;
+    alertsCreated: number;
+    alertsUpdated: number;
+  };
 }
