@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 7 of 22 — Security Detection Rules.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine and the seven built-in detection rules are in place. Alert management, incidents and the dashboard are added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 8 of 22 — Risk Scoring.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules and the multi-factor risk scoring engine are in place. Alert management, incidents and the dashboard are added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -36,7 +36,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 5 | Event management | ✅ Complete |
 | 6 | Detection engine | ✅ Complete |
 | 7 | Security detection rules (7 rules) | ✅ Complete |
-| 8 | Risk scoring | ⏳ Planned |
+| 8 | Risk scoring | ✅ Complete |
 | 9 | Alert management | ⏳ Planned |
 | 10 | Incident management | ⏳ Planned |
 | 11 | Threat intelligence | ⏳ Planned |
@@ -262,7 +262,7 @@ Each rule has a `ruleType` that selects an evaluator, and a JSON `condition` doc
 
 **Idempotent by design.** Every finding carries a dedupe key of `ruleCode:groupValue:windowBucket`. Re-running detection over the same events updates the existing alert (refreshing `lastSeen`, risk score and related events) instead of creating duplicates — so detection runs safely on every ingestion.
 
-**Deterministic risk scoring (baseline).** Each finding gets a 0–100 score with an itemised breakdown: base severity weight, volume above threshold, privileged-account targeting and source-IP presence. Phase 8 expands this model.
+**Deterministic risk scoring.** Every finding is scored 0–100 by a documented, reproducible model — no randomness — with an itemised factor breakdown that the UI renders so an analyst can see *why* an alert scored what it did. See [Risk scoring](#risk-scoring).
 
 **Entry points**
 
@@ -271,6 +271,47 @@ Each rule has a `ruleType` that selects an evaluator, and a JSON `condition` doc
 | After events are ingested | `server/ingestion/pipeline.ts` |
 | Manual / backfill scan | `POST /api/detection/scan` (requires `detection:run`) |
 | Attack simulation lab | Phase 14 |
+
+## Risk scoring
+
+Every detection is scored **0–100** by a deterministic model: identical inputs always produce the same score, so detections are reproducible and testable. Each contribution is recorded as a factor and shown in the UI.
+
+| Factor | Contribution |
+| --- | --- |
+| **Base severity** | `SEVERITY_WEIGHTS[severity] × 6` → INFO 6 · LOW 12 · MEDIUM 30 · HIGH 48 · CRITICAL 60 |
+| **Frequency** | `min(20, round(eventCount / threshold × 10))` — only for rules with a real threshold |
+| **Detection rule** | CORRELATION +8 · USER_BASED +6 · THRESHOLD +4 · IP_BASED/TIME_WINDOW +3 · EVENT_MATCH +2 |
+| **Target account** | +3 when an account is targeted, **+9 more** if it is a privileged account (`admin`, `root`, …) |
+| **Source IP** | +5 when recorded, +5 more when publicly routable |
+| **Threat intelligence** | `min(20, round(confidence / 5))` when the source IP matches a local indicator |
+| **Repeated behaviour** | `min(15, priorOccurrences × 3)` — how often this rule+group fired in earlier windows |
+
+The total is clamped to 0–100 and mapped to a band:
+
+| Score | Band |
+| --- | --- |
+| 0–25 | Low |
+| 26–50 | Moderate |
+| 51–75 | High |
+| 76–100 | Critical |
+
+Threat-intelligence matches come from the local indicator database through a dedicated service layer (`server/threat-intel/matcher.ts`), so external feeds can be added later without touching detection code. IP classification is **private vs public routing only** — Securis makes no geolocation claims.
+
+Example (brute force against `admin` from a known malicious IP):
+
+```
++48  Base severity HIGH
++12  Frequency 6 events vs threshold 5
+ +4  Detection rule type THRESHOLD
+ +3  Target account identified (admin)
+ +9  Privileged account involvement (admin)
+ +5  Source IP recorded
+ +5  Source IP is publicly routable
++17  Threat intelligence match (Credential Attack) · confidence 85
+= 103 → clamped to 100 (Critical)
+```
+
+The score and its factor breakdown are stored on the alert (`riskScore`, `riskFactors`) and rendered wherever alerts appear.
 
 ## Detection rules
 
