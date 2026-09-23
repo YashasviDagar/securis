@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { describeError } from "@/utils/errors";
 
 /**
  * Securis - HTTP request helpers
@@ -79,10 +80,7 @@ export function jsonError(
 }
 
 /** Convert an unknown thrown value into a loggable string without leaking it. */
-export function describeError(error: unknown): string {
-  if (error instanceof Error) return `${error.name}: ${error.message}`;
-  return String(error);
-}
+export { describeError };
 
 /**
  * Constant-time string comparison for secrets (e.g. the ingestion API key).
