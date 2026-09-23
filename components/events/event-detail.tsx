@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft, Bell, Siren } from "lucide-react";
 import { SeverityBadge, StatusBadge } from "@/components/shared/severity-badge";
+import { RiskMeter, RiskScoreBadge } from "@/components/shared/risk-badge";
+import { RiskFactorList } from "@/components/shared/risk-factors";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/utils/format";
 import type { EventDetail } from "@/types/events";
@@ -136,19 +138,36 @@ export function EventDetailView({ event }: { event: EventDetail }) {
               This event has not triggered any alerts.
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {event.relatedAlerts.map((alert) => (
-                <li key={alert.id} className="flex items-center justify-between gap-3">
-                  <Link
-                    href={`/alerts/${alert.id}`}
-                    className="truncate text-sm text-primary hover:underline"
-                  >
-                    {alert.title}
-                  </Link>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <SeverityBadge severity={alert.severity} />
-                    <StatusBadge status={alert.status} />
-                  </span>
+                <li key={alert.id} className="space-y-2 rounded-lg border border-border/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Link
+                      href={`/alerts/${alert.id}`}
+                      className="truncate text-sm font-medium text-primary hover:underline"
+                    >
+                      {alert.title}
+                    </Link>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SeverityBadge severity={alert.severity} />
+                      <StatusBadge status={alert.status} />
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <RiskScoreBadge score={alert.riskScore} />
+                    <RiskMeter score={alert.riskScore} className="max-w-[220px]" />
+                  </div>
+
+                  {/* Native <details> keeps the breakdown JS-free. */}
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                      Why this score
+                    </summary>
+                    <div className="mt-2">
+                      <RiskFactorList factors={alert.riskFactors} />
+                    </div>
+                  </details>
                 </li>
               ))}
             </ul>
