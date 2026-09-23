@@ -106,3 +106,17 @@ export type SourceType = (typeof SOURCE_TYPES)[number];
 /** Types of threat intelligence indicators supported (Phase 11). */
 export const INDICATOR_TYPES = ["IP", "DOMAIN", "HASH", "URL"] as const;
 export type IndicatorType = (typeof INDICATOR_TYPES)[number];
+
+/**
+ * The detection strategy a rule uses (Phase 6). Mirrors the Prisma `RuleType`
+ * enum and drives which evaluator the detection engine selects.
+ */
+export const RULE_TYPES = [
+  "EVENT_MATCH",
+  "THRESHOLD",
+  "TIME_WINDOW",
+  "CORRELATION",
+  "USER_BASED",
+  "IP_BASED",
+] as const;
+export type RuleType = (typeof RULE_TYPES)[number];
