@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowLeft, Bell, Clock, Siren } from "lucide-react";
 import { AlertActions, type AssignableUser } from "@/components/alerts/alert-actions";
-import { AlertTimeline } from "@/components/alerts/alert-timeline";
+import { CreateIncidentDialog } from "@/components/incidents/create-incident-dialog";
+import { Timeline } from "@/components/shared/timeline";
 import { RiskMeter, RiskScoreBadge } from "@/components/shared/risk-badge";
 import { RiskFactorList } from "@/components/shared/risk-factors";
 import { SeverityBadge, StatusBadge } from "@/components/shared/severity-badge";
@@ -35,20 +36,33 @@ export function AlertDetailView({
   alert,
   users,
   canWrite,
+  canCreateIncident,
 }: {
   alert: AlertDetail;
   users: AssignableUser[];
   canWrite: boolean;
+  canCreateIncident: boolean;
 }) {
   return (
     <div className="space-y-6">
       <div className="space-y-3 border-b border-border/60 pb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-2 h-7">
-          <Link href="/alerts">
-            <ArrowLeft className="size-3.5" aria-hidden="true" />
-            Back to alerts
-          </Link>
-        </Button>
+        <div className="flex items-start justify-between gap-3">
+          <Button asChild variant="ghost" size="sm" className="-ml-2 h-7">
+            <Link href="/alerts">
+              <ArrowLeft className="size-3.5" aria-hidden="true" />
+              Back to alerts
+            </Link>
+          </Button>
+
+          {/* Bundle this alert into an incident (analyst/admin only). */}
+          <CreateIncidentDialog
+            candidateAlerts={[{ id: alert.id, title: alert.title, severity: alert.severity }]}
+            presetAlertIds={[alert.id]}
+            users={users}
+            canWrite={canCreateIncident}
+            triggerLabel="Create incident"
+          />
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <SeverityBadge severity={alert.severity} />
@@ -128,7 +142,7 @@ export function AlertDetailView({
             <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
             Investigation timeline
           </h2>
-          <AlertTimeline notes={alert.notes} events={alert.relatedEvents} />
+          <Timeline notes={alert.notes} events={alert.relatedEvents} />
         </section>
 
         <div className="space-y-4">
