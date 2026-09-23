@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 8 of 22 — Risk Scoring.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules and the multi-factor risk scoring engine are in place. Alert management, incidents and the dashboard are added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 9 of 22 — Alert Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine and the alert triage workflow are in place. Incident management and the dashboard are added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -37,7 +37,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 6 | Detection engine | ✅ Complete |
 | 7 | Security detection rules (7 rules) | ✅ Complete |
 | 8 | Risk scoring | ✅ Complete |
-| 9 | Alert management | ⏳ Planned |
+| 9 | Alert management | ✅ Complete |
 | 10 | Incident management | ⏳ Planned |
 | 11 | Threat intelligence | ⏳ Planned |
 | 12 | Detection rule management | ⏳ Planned |
@@ -312,6 +312,26 @@ Example (brute force against `admin` from a known malicious IP):
 ```
 
 The score and its factor breakdown are stored on the alert (`riskScore`, `riskFactors`) and rendered wherever alerts appear.
+
+## Alert management
+
+`/alerts` is the analyst triage queue. Like the event explorer it is server-rendered and fully URL-driven.
+
+- **Filters:** free-text search (title, description, IP, user), severity, status, detection rule, source IP, target user, assignment (assigned / unassigned) and a created-date range.
+- **Sorting:** severity, risk score, status, first seen, last seen and created.
+- **Pagination:** page size 25/50/100.
+- **Detail view** (`/alerts/[id]`): severity, status, risk score with its full factor breakdown, detection rule, source/target, first/last seen, assignment, related events, related incidents, notes, and a merged **investigation timeline**.
+
+Analysts can:
+
+| Action | Endpoint | Permission |
+| --- | --- | --- |
+| Change status (`NEW`, `INVESTIGATING`, `RESOLVED`, `FALSE_POSITIVE`) | `PATCH /api/alerts/[id]` | `alerts:write` |
+| Assign / unassign an analyst | `PATCH /api/alerts/[id]` | `alerts:write` |
+| Add a note | `POST /api/alerts/[id]/notes` | `alerts:write` |
+| Mark false positive / resolve | quick actions (status shortcuts) | `alerts:write` |
+
+`RESOLVED` and `FALSE_POSITIVE` stamp `resolvedAt`; any other status clears it. Every mutation writes an audit entry (`ALERT_STATUS_CHANGED`, `ALERT_ASSIGNED`, `ALERT_NOTE_ADDED`). The permission is enforced on the server — the actions panel is only hidden for read-only roles, and the API returns `403` regardless of the UI.
 
 ## Detection rules
 
