@@ -115,14 +115,29 @@ export interface DetectionFinding {
   ruleId: string;
   ruleCode: string;
   ruleName: string;
+  ruleType: RuleType;
   severity: Severity;
   title: string;
   description: string;
   /** Stable idempotency key (see Alert.dedupeKey). */
   dedupeKey: string;
+  /** The group the finding is about (IP, username, ...). Null for global. */
+  groupValue: string | null;
   /** Deterministic 0-100 risk score (see server/detection/risk.ts). */
   riskScore: number;
   riskFactors: { factor: string; weight: number }[];
+  /** Matching threat-intelligence indicator, if the engine found one. */
+  threatIntel?: {
+    type: string;
+    value: string;
+    threatType: string | null;
+    confidence: number;
+    source: string;
+  } | null;
+  /** Number of events contributing to the detection. */
+  eventCount?: number;
+  /** Threshold the rule required. */
+  threshold?: number;
   sourceIp: string | null;
   targetUser: string | null;
   firstSeen: Date;
@@ -141,5 +156,11 @@ export interface DetectionRunResult {
   /** Rules whose condition could not be parsed (should be empty). */
   errors: { ruleCode: string; message: string }[];
   /** Alerts touched by this run, for API responses and the simulation lab. */
-  alerts: { id: string; title: string; severity: Severity; status: string }[];
+  alerts: {
+    id: string;
+    title: string;
+    severity: Severity;
+    status: string;
+    riskScore: number;
+  }[];
 }
