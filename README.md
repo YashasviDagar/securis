@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 5 of 22 — Event Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline and the event explorer are in place. Detection, alerting and response are added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 6 of 22 — Detection Engine.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer and the rule-based detection engine are in place. Alert management, incidents and the dashboard are added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -34,7 +34,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 3 | Authentication & RBAC | ✅ Complete |
 | 4 | Log ingestion pipeline | ✅ Complete |
 | 5 | Event management | ✅ Complete |
-| 6 | Detection engine | ⏳ Planned |
+| 6 | Detection engine | ✅ Complete |
 | 7 | Security detection rules (7 rules) | ⏳ Planned |
 | 8 | Risk scoring | ⏳ Planned |
 | 9 | Alert management | ⏳ Planned |
@@ -244,6 +244,33 @@ This is normalised to `LOGIN_FAILED` with severity `MEDIUM`, username `bob`, sou
 - **Detail view** (`/events/[id]`): timestamp, source, event type, severity, username, source/destination IP, user agent, resource, action, status, message, raw metadata, and the alerts and incidents the event contributed to.
 
 The same data is available programmatically via `GET /api/events` and `GET /api/events/[id]` (requires the `events:read` permission).
+
+## Detection engine
+
+The detection engine evaluates **database-stored rules** against stored events. Rules are data, not code, so they can be tuned, enabled and disabled without a deployment.
+
+Each rule has a `ruleType` that selects an evaluator, and a JSON `condition` document validated against a schema for that type:
+
+| Rule type | Evaluator behaviour | Used by |
+| --- | --- | --- |
+| `EVENT_MATCH` | Fires when events match the filters, grouped by user/IP | Privilege escalation, sensitive-resource access |
+| `THRESHOLD` | Counts matching events per group in a window; fires at the threshold | Brute force, unauthorized access |
+| `TIME_WINDOW` | As threshold, tuned for high-rate windows | API abuse |
+| `IP_BASED` | Threshold grouped by source IP | (available for custom rules) |
+| `CORRELATION` | Relates failures followed by a success for the same group, optionally from a new IP | Account takeover |
+| `USER_BASED` | Behavioural signals: new IP, new device, off-hours, failures before success | Suspicious login pattern |
+
+**Idempotent by design.** Every finding carries a dedupe key of `ruleCode:groupValue:windowBucket`. Re-running detection over the same events updates the existing alert (refreshing `lastSeen`, risk score and related events) instead of creating duplicates — so detection runs safely on every ingestion.
+
+**Deterministic risk scoring (baseline).** Each finding gets a 0–100 score with an itemised breakdown: base severity weight, volume above threshold, privileged-account targeting and source-IP presence. Phase 8 expands this model.
+
+**Entry points**
+
+| Trigger | Path |
+| --- | --- |
+| After events are ingested | `server/ingestion/pipeline.ts` |
+| Manual / backfill scan | `POST /api/detection/scan` (requires `detection:run`) |
+| Attack simulation lab | Phase 14 |
 
 ## Getting started
 
