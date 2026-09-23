@@ -32,6 +32,7 @@ import {
   SourceType,
 } from "@prisma/client";
 import { hashPassword } from "../security/password";
+import { runDetection } from "@/server/detection";
 
 const prisma = new PrismaClient();
 
@@ -267,10 +268,16 @@ async function seedDetectionRules(adminId: string) {
       code: "SENSITIVE_RESOURCE_ACCESS_001",
       name: "Sensitive Resource Access",
       description:
-        "Access to sensitive administrative or configuration resources such as /admin, /config or .env.",
+        "Access to sensitive administrative or configuration resources such as /admin, /config or .env from a web or API request.",
       ruleType: RuleType.EVENT_MATCH,
       severity: Severity.HIGH,
       condition: {
+        // Restrict to actual resource-access events. Without the sourceType
+        // filter the rule would also match administrative actions whose
+        // `resource` happens to be "/users" (e.g. a role change), which is a
+        // different kind of event and is already covered by the privilege
+        // escalation rule.
+        sourceType: ["WEB", "API"],
         resource: ["/admin", "/users", "/config", "/database", ".env"],
       },
       threshold: null,
@@ -281,7 +288,7 @@ async function seedDetectionRules(adminId: string) {
       code: "SUSPICIOUS_LOGIN_PATTERN_001",
       name: "Suspicious Login Pattern",
       description:
-        "A successful authentication combining a new IP, a new device, an unusual login time and prior failures.",
+        "A successful authentication combining a new IP, a new device, an unusual login time and prior failures. Fires when at least three of the four signals are present.",
       ruleType: RuleType.USER_BASED,
       severity: Severity.MEDIUM,
       condition: {
@@ -289,6 +296,11 @@ async function seedDetectionRules(adminId: string) {
         newDevice: true,
         offHours: true,
         failedBeforeSuccess: true,
+        // Require 3 of the 4 signals. Requiring all four makes the rule brittle:
+        // off-hours is time-zone dependent and a real attacker can log in during
+        // business hours. Three signals (new IP + new device + prior failures) is
+        // still a high-confidence pattern.
+        minSignals: 3,
       },
       threshold: 3,
       timeWindowSeconds: 900,
@@ -507,9 +519,11 @@ async function seedSecurityEvents() {
   }
 
   // --- 2. Brute force: 6 failures from one IP inside ~4 minutes -------------
+  // Scenarios are timestamped within the last few minutes on purpose, so that a
+  // real-time detection run at seed time genuinely re-detects them.
   for (let i = 0; i < 6; i += 1) {
     add("bruteForce", {
-      timestamp: minutesAgo(125 - i * 0.7),
+      timestamp: minutesAgo(4 - i * 0.6),
       source: "authentication-service",
       sourceType: SourceType.AUTH,
       eventType: "LOGIN_FAILED",
@@ -528,7 +542,7 @@ async function seedSecurityEvents() {
   // --- 3. Account takeover: failures then success from a new IP -------------
   for (let i = 0; i < 4; i += 1) {
     add("takeover", {
-      timestamp: minutesAgo(305 - i * 0.6),
+      timestamp: minutesAgo(8 - i * 0.5),
       source: "authentication-service",
       sourceType: SourceType.AUTH,
       eventType: "LOGIN_FAILED",
@@ -544,7 +558,7 @@ async function seedSecurityEvents() {
     });
   }
   add("takeover", {
-    timestamp: minutesAgo(300),
+    timestamp: minutesAgo(5),
     source: "authentication-service",
     sourceType: SourceType.AUTH,
     eventType: "LOGIN_SUCCESS",
@@ -561,7 +575,7 @@ async function seedSecurityEvents() {
 
   // --- 4. Privilege escalation ---------------------------------------------
   add("privilege", {
-    timestamp: minutesAgo(60 * 22),
+    timestamp: minutesAgo(3),
     source: "admin-console",
     sourceType: SourceType.APPLICATION,
     eventType: "USER_ROLE_CHANGED",
@@ -576,7 +590,7 @@ async function seedSecurityEvents() {
     metadata: { previousRole: "VIEWER", newRole: "SECURITY_ANALYST", changedBy: "admin" },
   });
   add("privilege", {
-    timestamp: minutesAgo(60 * 21.5),
+    timestamp: minutesAgo(2.6),
     source: "admin-console",
     sourceType: SourceType.APPLICATION,
     eventType: "ADMIN_PRIVILEGE_GRANTED",
@@ -591,7 +605,7 @@ async function seedSecurityEvents() {
     metadata: { grantedBy: "admin", scope: "platform" },
   });
   add("privilege", {
-    timestamp: minutesAgo(60 * 21),
+    timestamp: minutesAgo(2.2),
     source: "database",
     sourceType: SourceType.DATABASE,
     eventType: "ROLE_TABLE_UPDATE",
@@ -607,7 +621,7 @@ async function seedSecurityEvents() {
   // --- 5. API abuse: 120 requests from one IP within ~50 seconds ------------
   for (let i = 0; i < 120; i += 1) {
     add("apiAbuse", {
-      timestamp: minutesAgo(32 - i * (50 / 120 / 60)),
+      timestamp: minutesAgo(0.9 - i * (50 / 120 / 60)),
       source: "api-gateway",
       sourceType: SourceType.API,
       eventType: "API_REQUEST",
@@ -627,7 +641,7 @@ async function seedSecurityEvents() {
   for (let i = 0; i < 14; i += 1) {
     const status = i % 3 === 0 ? "403" : "401";
     add("unauthorized", {
-      timestamp: minutesAgo(180 - i * 0.4),
+      timestamp: minutesAgo(4 - i * 0.25),
       source: "api-gateway",
       sourceType: SourceType.API,
       eventType: "API_REQUEST",
@@ -644,9 +658,9 @@ async function seedSecurityEvents() {
 
   // --- 7. Sensitive resource access ----------------------------------------
   const sensitiveResources = ["/admin", "/users", "/config", "/database", ".env"];
-  for (const resource of sensitiveResources) {
+  sensitiveResources.forEach((resource, index) => {
     add("sensitive", {
-      timestamp: minutesAgo(360 + randInt(0, 5)),
+      timestamp: minutesAgo(4 - index * 0.3),
       source: "web-application",
       sourceType: SourceType.WEB,
       eventType: "HTTP_REQUEST",
@@ -659,12 +673,12 @@ async function seedSecurityEvents() {
       status: resource === ".env" ? "403" : "200",
       message: `Access to sensitive resource ${resource}`,
     });
-  }
+  });
 
-  // --- 8. Suspicious login pattern (new IP + new device + off hours) --------
+  // --- 8. Suspicious login pattern (new IP + new device + prior failures) ---
   for (let i = 0; i < 3; i += 1) {
     add("suspicious", {
-      timestamp: minutesAgo(60 * 3 - i * 0.5),
+      timestamp: minutesAgo(4 - i * 0.3),
       source: "authentication-service",
       sourceType: SourceType.AUTH,
       eventType: "LOGIN_FAILED",
@@ -679,7 +693,7 @@ async function seedSecurityEvents() {
     });
   }
   add("suspicious", {
-    timestamp: minutesAgo(60 * 3 - 2),
+    timestamp: minutesAgo(3),
     source: "authentication-service",
     sourceType: SourceType.AUTH,
     eventType: "LOGIN_SUCCESS",
@@ -697,193 +711,84 @@ async function seedSecurityEvents() {
   await prisma.securityEvent.createMany({ data: events, skipDuplicates: true });
   return scenario;
 }
-
-async function seedAlerts(
-  rules: { id: string; code: string }[],
-  users: Awaited<ReturnType<typeof seedUsers>>,
-  scenario: Record<string, string[]>,
-) {
-  const ruleId = (code: string) => rules.find((r) => r.code === code)?.id;
-  const ids = (name: string) => (scenario[name] ?? []).map((id) => ({ id }));
-
-  const alerts = [
-    {
-      title: "Possible Brute Force Attack",
-      description:
-        "Six failed authentication attempts for the 'admin' account originated from 198.51.100.23 within four minutes, matching the brute force threshold.",
-      severity: Severity.HIGH,
-      status: AlertStatus.INVESTIGATING,
-      riskScore: 74,
-      riskFactors: [
-        { factor: "Base severity HIGH", weight: 40 },
-        { factor: "5+ failures in window", weight: 18 },
-        { factor: "Privileged target account (admin)", weight: 10 },
-        { factor: "Source IP on threat intelligence", weight: 6 },
-      ],
-      sourceIp: IPS.bruteForce,
-      targetUser: "admin",
-      ruleCode: "BRUTE_FORCE_001",
-      firstSeen: minutesAgo(125),
-      lastSeen: minutesAgo(121),
-      assignedToId: users.analyst.id,
-      eventIds: ids("bruteForce"),
-    },
-    {
-      title: "Possible Account Takeover",
-      description:
-        "Four failed logins for 'j.reyes' followed by a successful authentication from a new source IP 203.0.113.77.",
-      severity: Severity.CRITICAL,
-      status: AlertStatus.NEW,
-      riskScore: 92,
-      riskFactors: [
-        { factor: "Base severity CRITICAL", weight: 50 },
-        { factor: "Failed-then-success correlation", weight: 20 },
-        { factor: "New source IP for the account", weight: 12 },
-        { factor: "Target account is privileged", weight: 10 },
-      ],
-      sourceIp: IPS.takeover,
-      targetUser: "j.reyes",
-      ruleCode: "ACCOUNT_TAKEOVER_001",
-      firstSeen: minutesAgo(305),
-      lastSeen: minutesAgo(300),
-      assignedToId: null,
-      eventIds: ids("takeover"),
-    },
-    {
-      title: "Suspicious Privilege Escalation",
-      description:
-        "Administrative privilege was granted and a user role was elevated outside a change window for account 's.malik'.",
-      severity: Severity.HIGH,
-      status: AlertStatus.INVESTIGATING,
-      riskScore: 78,
-      riskFactors: [
-        { factor: "Base severity HIGH", weight: 40 },
-        { factor: "Privilege grant event", weight: 20 },
-        { factor: "Role change event", weight: 12 },
-        { factor: "Direct database modification", weight: 6 },
-      ],
-      sourceIp: IPS.normal[2],
-      targetUser: "s.malik",
-      ruleCode: "PRIVILEGE_ESCALATION_001",
-      firstSeen: minutesAgo(60 * 22),
-      lastSeen: minutesAgo(60 * 21),
-      assignedToId: users.analyst2.id,
-      eventIds: ids("privilege"),
-    },
-    {
-      title: "Abnormal API Activity",
-      description:
-        "Source IP 192.0.2.44 issued 120 API requests within 50 seconds, exceeding the 100 requests/minute threshold.",
-      severity: Severity.MEDIUM,
-      status: AlertStatus.RESOLVED,
-      riskScore: 55,
-      riskFactors: [
-        { factor: "Base severity MEDIUM", weight: 25 },
-        { factor: "Request volume anomaly", weight: 20 },
-        { factor: "Source IP on threat intelligence", weight: 10 },
-      ],
-      sourceIp: IPS.apiAbuse,
-      targetUser: null,
-      ruleCode: "API_ABUSE_001",
-      firstSeen: minutesAgo(32),
-      lastSeen: minutesAgo(31),
-      assignedToId: users.analyst.id,
-      resolvedAt: minutesAgo(20),
-      eventIds: ids("apiAbuse"),
-    },
-    {
-      title: "Possible Unauthorized Access Attempt",
-      description:
-        "Fourteen requests returning 401/403 were observed from 198.51.100.90 against /api/v1/users.",
-      severity: Severity.MEDIUM,
-      status: AlertStatus.NEW,
-      riskScore: 48,
-      riskFactors: [
-        { factor: "Base severity MEDIUM", weight: 25 },
-        { factor: "Repeated 401/403 responses", weight: 15 },
-        { factor: "Sensitive endpoint targeted", weight: 8 },
-      ],
-      sourceIp: IPS.unauthorized,
-      targetUser: null,
-      ruleCode: "UNAUTHORIZED_ACCESS_001",
-      firstSeen: minutesAgo(180),
-      lastSeen: minutesAgo(178),
-      assignedToId: null,
-      eventIds: ids("unauthorized"),
-    },
-    {
-      title: "Sensitive Resource Access",
-      description:
-        "Sequential access to /admin, /users, /config, /database and .env from 203.0.113.201 indicates reconnaissance.",
-      severity: Severity.HIGH,
-      status: AlertStatus.FALSE_POSITIVE,
-      riskScore: 62,
-      riskFactors: [
-        { factor: "Base severity HIGH", weight: 40 },
-        { factor: "Sensitive resource list matched", weight: 15 },
-        { factor: "Unrecognised user agent", weight: 7 },
-      ],
-      sourceIp: IPS.sensitive,
-      targetUser: null,
-      ruleCode: "SENSITIVE_RESOURCE_ACCESS_001",
-      firstSeen: minutesAgo(365),
-      lastSeen: minutesAgo(360),
-      assignedToId: users.analyst2.id,
-      resolvedAt: minutesAgo(300),
-      eventIds: ids("sensitive"),
-    },
-    {
-      title: "Suspicious Login Pattern",
-      description:
-        "Successful login for 'a.khan' combining a new IP, a new device, an off-hours timestamp and three prior failures.",
-      severity: Severity.MEDIUM,
-      status: AlertStatus.NEW,
-      riskScore: 58,
-      riskFactors: [
-        { factor: "Base severity MEDIUM", weight: 25 },
-        { factor: "New IP and device", weight: 15 },
-        { factor: "Off-hours authentication", weight: 10 },
-        { factor: "Failed attempts preceding success", weight: 8 },
-      ],
-      sourceIp: IPS.suspicious,
-      targetUser: "a.khan",
-      ruleCode: "SUSPICIOUS_LOGIN_PATTERN_001",
-      firstSeen: minutesAgo(60 * 3),
-      lastSeen: minutesAgo(60 * 3 - 2),
-      assignedToId: null,
-      eventIds: ids("suspicious"),
-    },
-  ];
-
-  const created = [];
-  for (const alert of alerts) {
-    const { ruleCode, eventIds, ...data } = alert;
-    const record = await prisma.alert.create({
-      data: {
-        ...data,
-        // Link the alert to the rule that produced it (scalar FK keeps the
-        // input compatible with the unchecked create shape used by `...data`).
-        ruleId: ruleId(ruleCode) ?? null,
-        events: eventIds.length ? { connect: eventIds } : undefined,
-      },
-    });
-    created.push(record);
+/**
+ * Run the detection engine over the freshly seeded events and apply analyst
+ * triage (status, assignment, resolution) to the resulting alerts.
+ *
+ * Alerts are NOT hard-coded: they are produced by the real detection engine
+ * evaluating the real seeded rules against the real seeded events. The seed
+ * only layers on the human workflow state (who is investigating, what was
+ * resolved) so the alert and incident screens have realistic data.
+ *
+ * Connection: server/detection (runDetection) -> database/client.ts (Alert).
+ */
+async function seedDetectedAlerts(users: Awaited<ReturnType<typeof seedUsers>>) {
+  const run = await runDetection({ to: new Date() });
+  if (run.errors.length > 0) {
+    console.warn("Securis seed: detection reported errors:", run.errors);
   }
-  return created;
+
+  // Load the engine-created alerts together with the rule that produced them.
+  const alerts = await prisma.alert.findMany({
+    where: { dedupeKey: { not: null } },
+    include: { rule: { select: { code: true } } },
+  });
+
+  /** Triage applied per rule so the UI shows a realistic mix of statuses. */
+  const triage: Record<
+    string,
+    { status: AlertStatus; assignTo?: string; resolve?: boolean }
+  > = {
+    BRUTE_FORCE_001: { status: AlertStatus.INVESTIGATING, assignTo: users.analyst.id },
+    ACCOUNT_TAKEOVER_001: { status: AlertStatus.NEW },
+    PRIVILEGE_ESCALATION_001: {
+      status: AlertStatus.INVESTIGATING,
+      assignTo: users.analyst2.id,
+    },
+    API_ABUSE_001: {
+      status: AlertStatus.RESOLVED,
+      assignTo: users.analyst.id,
+      resolve: true,
+    },
+    UNAUTHORIZED_ACCESS_001: { status: AlertStatus.NEW },
+    SENSITIVE_RESOURCE_ACCESS_001: {
+      status: AlertStatus.FALSE_POSITIVE,
+      assignTo: users.analyst2.id,
+      resolve: true,
+    },
+    SUSPICIOUS_LOGIN_PATTERN_001: { status: AlertStatus.NEW },
+  };
+
+  const updated = [];
+  for (const alert of alerts) {
+    const plan = alert.rule ? triage[alert.rule.code] : undefined;
+    const record = await prisma.alert.update({
+      where: { id: alert.id },
+      data: {
+        status: plan?.status ?? AlertStatus.NEW,
+        assignedToId: plan?.assignTo ?? null,
+        resolvedAt: plan?.resolve ? new Date() : null,
+      },
+      include: { rule: { select: { code: true } } },
+    });
+    updated.push(record);
+  }
+
+  return updated;
 }
 
 async function seedIncidents(
-  alerts: Awaited<ReturnType<typeof seedAlerts>>,
+  alerts: Awaited<ReturnType<typeof seedDetectedAlerts>>,
   users: Awaited<ReturnType<typeof seedUsers>>,
   scenario: Record<string, string[]>,
 ) {
-  const byTitle = (title: string) => alerts.find((a) => a.title === title);
+  const byRule = (code: string) => alerts.find((alert) => alert.rule?.code === code);
   const link = (name: string) => (scenario[name] ?? []).map((id) => ({ id }));
 
-  const bruteForce = byTitle("Possible Brute Force Attack");
-  const takeover = byTitle("Possible Account Takeover");
-  const apiAbuse = byTitle("Abnormal API Activity");
-  const sensitive = byTitle("Sensitive Resource Access");
+  const bruteForce = byRule("BRUTE_FORCE_001");
+  const takeover = byRule("ACCOUNT_TAKEOVER_001");
+  const apiAbuse = byRule("API_ABUSE_001");
+  const sensitive = byRule("SENSITIVE_RESOURCE_ACCESS_001");
 
   const incidents = [
     {
@@ -941,12 +846,12 @@ async function seedIncidents(
 }
 
 async function seedNotes(
-  alerts: Awaited<ReturnType<typeof seedAlerts>>,
+  alerts: Awaited<ReturnType<typeof seedDetectedAlerts>>,
   incidents: Awaited<ReturnType<typeof seedIncidents>>,
   users: Awaited<ReturnType<typeof seedUsers>>,
 ) {
-  const bruteForce = alerts.find((a) => a.title === "Possible Brute Force Attack");
-  const takeover = alerts.find((a) => a.title === "Possible Account Takeover");
+  const bruteForce = alerts.find((alert) => alert.rule?.code === "BRUTE_FORCE_001");
+  const takeover = alerts.find((alert) => alert.rule?.code === "ACCOUNT_TAKEOVER_001");
   const incident1 = incidents.find((i) => i.reference === "INC-2026-001");
 
   const alertNotes: Prisma.AlertNoteCreateManyInput[] = [];
@@ -1039,7 +944,7 @@ async function seedSessions(users: Awaited<ReturnType<typeof seedUsers>>) {
 async function seedAuditLogs(
   users: Awaited<ReturnType<typeof seedUsers>>,
   rules: { id: string; code: string }[],
-  alerts: Awaited<ReturnType<typeof seedAlerts>>,
+  alerts: Awaited<ReturnType<typeof seedDetectedAlerts>>,
   incidents: Awaited<ReturnType<typeof seedIncidents>>,
 ) {
   const logs: Prisma.AuditLogCreateManyInput[] = [];
@@ -1246,8 +1151,8 @@ async function main() {
   console.log("Securis seed: security events...");
   const scenario = await seedSecurityEvents();
 
-  console.log("Securis seed: alerts...");
-  const alerts = await seedAlerts(rules, users, scenario);
+  console.log("Securis seed: alerts (running detection engine)...");
+  const alerts = await seedDetectedAlerts(users);
 
   console.log("Securis seed: incidents...");
   const incidents = await seedIncidents(alerts, users, scenario);
