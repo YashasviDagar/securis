@@ -6,7 +6,7 @@ import { evaluateAggregate } from "./rules/threshold";
 import { evaluateCorrelation } from "./rules/correlation";
 import { evaluateUserBased } from "./rules/user-based";
 import { upsertAlertFromFinding } from "@/server/services/alert-service";
-import { describeError } from "@/server/http/request";
+import { describeError } from "@/utils/errors";
 import type {
   DetectionFinding,
   DetectionRuleRecord,
