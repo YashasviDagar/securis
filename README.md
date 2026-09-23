@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 4 of 22 — Log Ingestion System.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC and the event ingestion pipeline are in place. Detection, alerting and response are added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 5 of 22 — Event Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline and the event explorer are in place. Detection, alerting and response are added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -33,7 +33,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 2 | Database architecture (Prisma + PostgreSQL) | ✅ Complete |
 | 3 | Authentication & RBAC | ✅ Complete |
 | 4 | Log ingestion pipeline | ✅ Complete |
-| 5 | Event management | ⏳ Planned |
+| 5 | Event management | ✅ Complete |
 | 6 | Detection engine | ⏳ Planned |
 | 7 | Security detection rules (7 rules) | ⏳ Planned |
 | 8 | Risk scoring | ⏳ Planned |
@@ -232,6 +232,18 @@ A batch of up to 500 events may be sent as a JSON array. Collectors may also for
 ```
 
 This is normalised to `LOGIN_FAILED` with severity `MEDIUM`, username `bob`, source IP `10.0.0.5`, and the original payload preserved under `metadata.raw`.
+
+## Event management
+
+`/events` is a server-rendered explorer. All filtering, sorting and pagination are executed by the database — the browser only ever receives the current page of rows, never the full event set.
+
+- **Filters:** free-text search (message, username, source, event type, resource, IPs), severity, source type, source, event type, status, username, source IP and an inclusive date range.
+- **Sorting:** click any of the Timestamp / Severity / Event type / Source column headers to toggle ascending/descending.
+- **Pagination:** page size 25/50/100 with first/last/neighbour page links.
+- **URL-driven state:** the whole view lives in the query string, so every filter combination is shareable and works without client-side JavaScript.
+- **Detail view** (`/events/[id]`): timestamp, source, event type, severity, username, source/destination IP, user agent, resource, action, status, message, raw metadata, and the alerts and incidents the event contributed to.
+
+The same data is available programmatically via `GET /api/events` and `GET /api/events/[id]` (requires the `events:read` permission).
 
 ## Getting started
 
