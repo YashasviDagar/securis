@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   "audit:write",
   // Operations
   "events:ingest",
+  "detection:run",
   "simulation:run",
   "settings:manage",
 ] as const;
@@ -61,6 +62,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "threat-intel:read",
     "threat-intel:write",
     "audit:write",
+    "detection:run",
     "simulation:run",
   ],
   VIEWER: [
