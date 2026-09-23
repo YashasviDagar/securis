@@ -3,6 +3,7 @@ import { normalizeEvent, NormalizationError } from "./normalizer";
 import { validateEvent } from "./validator";
 import { createEvents } from "@/server/services/event-service";
 import { recordAudit } from "@/server/services/audit-service";
+import { runDetection } from "@/server/detection";
 import type { RawEvent } from "@/lib/validation/ingestion";
 import type {
   IngestionActor,
@@ -76,6 +77,25 @@ export async function ingestEvents(
 
   const eventIds = await createEvents(accepted);
 
+  // --- Phase 6: run the detection engine over the newly stored events --------
+  // Each rule re-evaluates its own time window and upserts alerts idempotently,
+  // so running detection on every ingest is safe. Failures are logged and never
+  // fail the ingestion request.
+  let detection: IngestionResult["detection"];
+  if (accepted.length > 0) {
+    try {
+      const run = await runDetection({ to: new Date() });
+      detection = {
+        rulesEvaluated: run.rulesEvaluated,
+        findings: run.findings,
+        alertsCreated: run.alertsCreated,
+        alertsUpdated: run.alertsUpdated,
+      };
+    } catch (error) {
+      console.error("[Securis] detection run after ingestion failed:", error);
+    }
+  }
+
   // One audit entry per ingestion request, with a summary of the outcome.
   await recordAudit({
     actorId: actor.type === "user" ? actor.userId : null,
@@ -98,16 +118,12 @@ export async function ingestEvents(
     },
   });
 
-  // --- Phase 6 extension point ---------------------------------------------
-  // The detection engine will be invoked here with the newly created event ids
-  // so detections run synchronously with ingestion.
-  // -------------------------------------------------------------------------
-
   return {
     received: rawEvents.length,
     accepted: accepted.length,
     rejected: errors.length,
     eventIds,
     errors: errors.slice(0, MAX_REPORTED_ERRORS),
+    detection,
   };
 }
