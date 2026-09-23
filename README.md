@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 9 of 22 — Alert Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine and the alert triage workflow are in place. Incident management and the dashboard are added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 10 of 22 — Incident Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine, the alert triage workflow and incident management are in place. The dashboard is added phase by phase. This README is updated at the end of every phase.
 
 ---
 
@@ -38,7 +38,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 7 | Security detection rules (7 rules) | ✅ Complete |
 | 8 | Risk scoring | ✅ Complete |
 | 9 | Alert management | ✅ Complete |
-| 10 | Incident management | ⏳ Planned |
+| 10 | Incident management | ✅ Complete |
 | 11 | Threat intelligence | ⏳ Planned |
 | 12 | Detection rule management | ⏳ Planned |
 | 13 | Security operations dashboard | ⏳ Planned |
@@ -332,6 +332,26 @@ Analysts can:
 | Mark false positive / resolve | quick actions (status shortcuts) | `alerts:write` |
 
 `RESOLVED` and `FALSE_POSITIVE` stamp `resolvedAt`; any other status clears it. Every mutation writes an audit entry (`ALERT_STATUS_CHANGED`, `ALERT_ASSIGNED`, `ALERT_NOTE_ADDED`). The permission is enforced on the server — the actions panel is only hidden for read-only roles, and the API returns `403` regardless of the UI.
+
+## Incident management
+
+An incident is a coordinated investigation built from one or more alerts. `/incidents` is the response board.
+
+- **Create** from alerts — either from the incident board (pick from the highest-risk open alerts) or directly from an alert's detail page ("Create incident"). The incident inherits the **highest severity** of the selected alerts and links the **union of their events**, so its timeline is complete from the start.
+- **Reference** is generated sequentially per year: `INC-2026-001`, `INC-2026-002`, …
+- **Filters:** search (reference/title/description), severity, status, assigned analyst, assigned/unassigned and a created-date range.
+- **Sorting:** reference, severity, status, created and updated. Pagination 25/50/100.
+- **Detail view** (`/incidents/[id]`): reference, severity, status, assignment, created/updated/resolved, related alerts, related events, notes, the resolution and the merged investigation timeline.
+
+| Action | Endpoint | Permission |
+| --- | --- | --- |
+| Create from alerts | `POST /api/incidents` | `incidents:write` |
+| Change status (`OPEN`, `INVESTIGATING`, `CONTAINED`, `RESOLVED`, `CLOSED`) | `PATCH /api/incidents/[id]` | `incidents:write` |
+| Assign / unassign an analyst | `PATCH /api/incidents/[id]` | `incidents:write` |
+| Record / edit the resolution | `PATCH /api/incidents/[id]` | `incidents:write` |
+| Add a note | `POST /api/incidents/[id]/notes` | `incidents:write` |
+
+`RESOLVED` and `CLOSED` stamp `resolvedAt`. Every change is audited (`INCIDENT_CREATED`, `INCIDENT_UPDATED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_NOTE_ADDED`).
 
 ## Detection rules
 
