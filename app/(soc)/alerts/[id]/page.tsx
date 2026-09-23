@@ -33,6 +33,14 @@ export default async function AlertDetailPage({
 
   const users = await getAssignableUsers();
   const canWrite = hasPermission(session.user.role, "alerts:write");
+  const canCreateIncident = hasPermission(session.user.role, "incidents:write");
 
-  return <AlertDetailView alert={alert} users={users} canWrite={canWrite} />;
+  return (
+    <AlertDetailView
+      alert={alert}
+      users={users}
+      canWrite={canWrite}
+      canCreateIncident={canCreateIncident}
+    />
+  );
 }
