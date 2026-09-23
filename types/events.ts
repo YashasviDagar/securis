@@ -1,3 +1,4 @@
+import type { Paginated } from "./common";
 import type { AlertStatus, IncidentStatus, Severity, SourceType } from "./security";
 
 /**
@@ -79,14 +80,8 @@ export interface EventDetail extends EventListItem {
   }[];
 }
 
-/** Generic paginated envelope used by every list in Securis. */
-export interface Paginated<T> {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
+/** Generic paginated envelope (shared across list domains). */
+export type { Paginated };
 
 /** Distinct values used to populate the filter dropdowns (real data). */
 export interface EventFacets {
