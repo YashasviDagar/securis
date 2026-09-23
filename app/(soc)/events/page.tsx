@@ -5,10 +5,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EventFilters } from "@/components/events/event-filters";
 import { EventTable } from "@/components/events/event-table";
-import { Pagination } from "@/components/events/pagination";
+import { Pagination } from "@/components/shared/pagination";
 import { Button } from "@/components/ui/button";
 import { requirePermission } from "@/auth/current-user";
 import { parseEventQuery } from "@/lib/validation/events";
+import { buildEventsHref } from "@/lib/events";
 import { getEventFacets, listEvents } from "@/server/services/event-service";
 
 export const metadata: Metadata = { title: "Events · Securis" };
@@ -75,10 +76,12 @@ export default async function EventsPage({
         <>
           <EventTable events={result.items} query={query} />
           <Pagination
-            query={query}
             page={result.page}
-            total={result.total}
             totalPages={result.totalPages}
+            total={result.total}
+            pageSize={result.pageSize}
+            buildHref={(page) => buildEventsHref(query, { page })}
+            label="events"
           />
         </>
       )}
