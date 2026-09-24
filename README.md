@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 13 of 22 — Security Operations Dashboard.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine, the alert triage workflow, incident management, the local threat-intelligence database, detection rule management and the real-time operations dashboard are in place. The remaining phases follow. This README is updated at the end of every phase.
+> **Status: Phase 14 of 22 — Attack Simulation Lab.** All core SIEM functionality is in place: ingestion, event exploration, the detection engine and its rules, risk scoring, alert triage, incident management, threat intelligence, rule management, the operations dashboard and the attack simulation lab. The remaining phases add audit-log UI, user management, global search, hardening, tests, Docker and documentation.
 
 ---
 
@@ -42,7 +42,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 11 | Threat intelligence | ✅ Complete |
 | 12 | Detection rule management | ✅ Complete |
 | 13 | Security operations dashboard | ✅ Complete |
-| 14 | Attack simulation lab | ⏳ Planned |
+| 14 | Attack simulation lab | ✅ Complete |
 | 15 | Audit logging | ⏳ Planned |
 | 16 | User management | ⏳ Planned |
 | 17 | Global search | ⏳ Planned |
@@ -433,6 +433,23 @@ Charts (Recharts):
 | Authentication outcomes | successful vs failed logins (donut) |
 
 A **Recent alerts** table shows the latest detections with severity, risk score, rule, source IP, target user and status. All aggregations live in `server/services/dashboard-service.ts`; the charts are thin client components that receive the already-aggregated data.
+
+## Attack simulation lab
+
+`/simulation` generates **controlled local attack traffic** that flows through the real ingestion and detection pipeline — nothing is mocked, and nothing leaves the application.
+
+| Scenario | Generates | Expected detection |
+| --- | --- | --- |
+| Simulate Brute Force | 6 failed logins from one IP | `BRUTE_FORCE_001` |
+| Simulate Account Takeover | 4 failures + a success from a new IP | `ACCOUNT_TAKEOVER_001` |
+| Simulate Privilege Escalation | role change + privilege grant | `PRIVILEGE_ESCALATION_001` |
+| Simulate API Abuse | 105 API requests in under a minute | `API_ABUSE_001` |
+| Simulate Unauthorized Access | 12 × 401/403 from one IP | `UNAUTHORIZED_ACCESS_001` |
+| Generate Normal Traffic | ordinary logins, views, API calls, health checks | none (baseline) |
+
+Each run posts to `POST /api/simulation` (`simulation:run`), which builds the events, calls the **same `ingestEvents` pipeline** used by the ingestion API, and returns the outcome (events accepted, alerts created/updated, findings). The panel then links directly to the alerts that were raised.
+
+Simulated events are tagged `metadata.simulation = true` and use **RFC 5737 documentation addresses** (`198.51.100.0/24`), so they are always distinguishable from real telemetry. Every run is recorded as a `SIMULATION_RUN` audit entry. The lab only ever operates on Securis' own test data.
 
 ## Getting started
 
