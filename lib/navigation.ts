@@ -91,6 +91,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: Shield,
         description: "Known malicious IPs, domains, hashes and URLs.",
         phase: 11,
+        requiredPermission: "threat-intel:read",
       },
       {
         title: "Attack Simulation",
