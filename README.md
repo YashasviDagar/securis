@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 10 of 22 — Incident Management.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine, the alert triage workflow and incident management are in place. The dashboard is added phase by phase. This README is updated at the end of every phase.
+> **Status: Phase 11 of 22 — Threat Intelligence.** The application shell, routing, theme, tooling, the PostgreSQL data model, secure authentication/RBAC, the event ingestion pipeline, the event explorer, the detection engine, the seven built-in detection rules, the multi-factor risk scoring engine, the alert triage workflow, incident management and the local threat-intelligence database are in place. The dashboard and the remaining phases follow. This README is updated at the end of every phase.
 
 ---
 
@@ -39,7 +39,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 8 | Risk scoring | ✅ Complete |
 | 9 | Alert management | ✅ Complete |
 | 10 | Incident management | ✅ Complete |
-| 11 | Threat intelligence | ⏳ Planned |
+| 11 | Threat intelligence | ✅ Complete |
 | 12 | Detection rule management | ⏳ Planned |
 | 13 | Security operations dashboard | ⏳ Planned |
 | 14 | Attack simulation lab | ⏳ Planned |
@@ -352,6 +352,26 @@ An incident is a coordinated investigation built from one or more alerts. `/inci
 | Add a note | `POST /api/incidents/[id]/notes` | `incidents:write` |
 
 `RESOLVED` and `CLOSED` stamp `resolvedAt`. Every change is audited (`INCIDENT_CREATED`, `INCIDENT_UPDATED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_NOTE_ADDED`).
+
+## Threat intelligence
+
+`/threat-intelligence` is the local indicator database — the source of the threat-intelligence factor in risk scoring. Active indicators are consulted by the risk engine; when an event's source IP matches one, the alert's risk score is raised.
+
+Indicators have a **type** (`IP`, `DOMAIN`, `HASH`, `URL`), **value**, **threat type**, **confidence** (0–100), **source**, **description**, first/last-seen timestamps and an **active** flag.
+
+- **Search & filter:** free text (value, threat type, source, description), type, threat type, source, minimum confidence and active/retired status.
+- **Add / edit** indicators with format validation per type (IPv4/IPv6, domain, MD5/SHA-1/SHA-256 hex, http(s) URL).
+- **Retire** an indicator (keeps it for history but excludes it from risk scoring) or **delete** it.
+- Duplicate indicators (same type + value) are rejected with `409`.
+
+| Action | Endpoint | Permission |
+| --- | --- | --- |
+| List / search | `GET /api/threat-intelligence` | `threat-intel:read` |
+| Add | `POST /api/threat-intelligence` | `threat-intel:write` |
+| Update / retire | `PATCH /api/threat-intelligence/[id]` | `threat-intel:write` |
+| Delete | `DELETE /api/threat-intelligence/[id]` | `threat-intel:write` |
+
+**External integrations stay isolated.** All indicator access goes through `server/threat-intel/` (`matcher.ts` for lookups, `service.ts` for CRUD). A real feed integration would slot in behind that boundary; no API keys or feed URLs exist anywhere in the codebase, and detection code never talks to a provider directly. Audit actions: `THREAT_INDICATOR_ADDED`, `THREAT_INDICATOR_UPDATED`, `THREAT_INDICATOR_DELETED`.
 
 ## Detection rules
 
