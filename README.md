@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 14 of 22 — Attack Simulation Lab.** All core SIEM functionality is in place: ingestion, event exploration, the detection engine and its rules, risk scoring, alert triage, incident management, threat intelligence, rule management, the operations dashboard and the attack simulation lab. The remaining phases add audit-log UI, user management, global search, hardening, tests, Docker and documentation.
+> **Status: Phase 15 of 22 — Audit Logging.** All core SIEM functionality plus the searchable audit trail are in place. The remaining phases add user management, global search, hardening, tests, Docker and documentation.
 
 ---
 
@@ -43,7 +43,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 12 | Detection rule management | ✅ Complete |
 | 13 | Security operations dashboard | ✅ Complete |
 | 14 | Attack simulation lab | ✅ Complete |
-| 15 | Audit logging | ⏳ Planned |
+| 15 | Audit logging | ✅ Complete |
 | 16 | User management | ⏳ Planned |
 | 17 | Global search | ⏳ Planned |
 | 18 | Security hardening | ⏳ Planned |
@@ -450,6 +450,16 @@ A **Recent alerts** table shows the latest detections with severity, risk score,
 Each run posts to `POST /api/simulation` (`simulation:run`), which builds the events, calls the **same `ingestEvents` pipeline** used by the ingestion API, and returns the outcome (events accepted, alerts created/updated, findings). The panel then links directly to the alerts that were raised.
 
 Simulated events are tagged `metadata.simulation = true` and use **RFC 5737 documentation addresses** (`198.51.100.0/24`), so they are always distinguishable from real telemetry. Every run is recorded as a `SIMULATION_RUN` audit entry. The lab only ever operates on Securis' own test data.
+
+## Audit logging
+
+`/audit-logs` is the **append-only** record of every privileged action, written automatically since Phase 3. There is no write endpoint — the UI can only read.
+
+Recorded actions include authentication (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `SESSION_*`), user administration (`USER_CREATED`, `ROLE_CHANGED`, `USER_DISABLED`), alerts (`ALERT_CREATED`, `ALERT_STATUS_CHANGED`, `ALERT_ASSIGNED`, `ALERT_NOTE_ADDED`), incidents (`INCIDENT_CREATED`, `INCIDENT_UPDATED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_NOTE_ADDED`), rules (`RULE_CREATED`, `RULE_UPDATED`, `RULE_ENABLED`, `RULE_DISABLED`, `RULE_DELETED`), threat intelligence (`THREAT_INDICATOR_ADDED`, `THREAT_INDICATOR_UPDATED`, `THREAT_INDICATOR_DELETED`), ingestion and detection (`EVENT_INGESTED`, `DETECTION_SCAN`, `SIMULATION_RUN`).
+
+Each entry records **actor** (id + denormalised email), **action**, **target** (type, id, label), **timestamp**, **IP address**, **user agent** and **metadata**. The explorer supports free-text search (actor, target, IP), action, actor, target-type and IP filters, a date range, sorting and pagination. Metadata is viewable inline.
+
+Administrator-only: the page and the API both require `audit:read`; the trail is never editable by ordinary users.
 
 ## Getting started
 
