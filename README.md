@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 15 of 22 — Audit Logging.** All core SIEM functionality plus the searchable audit trail are in place. The remaining phases add user management, global search, hardening, tests, Docker and documentation.
+> **Status: Phase 16 of 22 — User Management.** All core SIEM functionality plus the audit trail and user administration are in place. The remaining phases add global search, hardening, tests, Docker and documentation.
 
 ---
 
@@ -44,7 +44,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 13 | Security operations dashboard | ✅ Complete |
 | 14 | Attack simulation lab | ✅ Complete |
 | 15 | Audit logging | ✅ Complete |
-| 16 | User management | ⏳ Planned |
+| 16 | User management | ✅ Complete |
 | 17 | Global search | ⏳ Planned |
 | 18 | Security hardening | ⏳ Planned |
 | 19 | Automated testing | ⏳ Planned |
@@ -460,6 +460,25 @@ Recorded actions include authentication (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOU
 Each entry records **actor** (id + denormalised email), **action**, **target** (type, id, label), **timestamp**, **IP address**, **user agent** and **metadata**. The explorer supports free-text search (actor, target, IP), action, actor, target-type and IP filters, a date range, sorting and pagination. Metadata is viewable inline.
 
 Administrator-only: the page and the API both require `audit:read`; the trail is never editable by ordinary users.
+
+## User management
+
+`/users` is the administrator-only account surface.
+
+- **List:** name, email, role, active status, last login, session count and assigned alert/incident counts, with search, role/status filters, sorting and pagination.
+- **Create** an account with a policy-compliant password (Argon2id-hashed before storage). Duplicate emails are rejected with `409`; weak passwords with `400`.
+- **Edit** the name, role or active state.
+- **Enable / disable.** Disabling an account **immediately revokes all of its sessions**, so access ends without waiting for the session to expire.
+- **Detail view** (`/users/[id]`): the account, its **login history** (IP, user agent, started/last-seen/expires, derived ACTIVE/EXPIRED/REVOKED status) and its **recent activity** (the audit entries it produced).
+
+| Action | Endpoint | Permission |
+| --- | --- | --- |
+| List | `GET /api/users` | `users:read` |
+| Create | `POST /api/users` | `users:write` |
+| Detail | `GET /api/users/[id]` | `users:read` |
+| Update name/role/active | `PATCH /api/users/[id]` | `users:write` |
+
+An administrator **cannot disable their own account** (`400`), preventing a lock-out. Every administrative action is audited (`USER_CREATED`, `USER_UPDATED`, `ROLE_CHANGED`, `USER_ENABLED`, `USER_DISABLED`).
 
 ## Getting started
 
