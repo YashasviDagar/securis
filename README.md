@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 17 of 22 — Global Search.** All core SIEM functionality plus the audit trail, user administration and cross-entity global search are in place. The remaining phases add hardening, tests, Docker and documentation.
+> **Status: Phase 18 of 22 — Security Hardening.** All functionality is complete and the platform has undergone a full security hardening review (CSP and cross-origin headers, broader rate limiting, a security-posture settings page, and an audit for XSS/secret/raw-SQL patterns). The remaining phases add automated tests, Docker and documentation.
 
 ---
 
@@ -46,7 +46,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 15 | Audit logging | ✅ Complete |
 | 16 | User management | ✅ Complete |
 | 17 | Global search | ✅ Complete |
-| 18 | Security hardening | ⏳ Planned |
+| 18 | Security hardening | ✅ Complete |
 | 19 | Automated testing | ⏳ Planned |
 | 20 | Docker & deployment | ⏳ Planned |
 | 21 | Documentation | ⏳ Planned |
@@ -570,7 +570,24 @@ See [`.env.example`](./.env.example) for the full, documented list.
 
 ## Security
 
-Securis treats security as a feature, not an afterthought. Implemented so far: baseline HTTP security headers and a dark-only UI with no client-side secrets. Phase 18 performs a full hardening review (Argon2id password hashing, database-backed sessions, server-side RBAC, input validation, rate limiting, CSRF, XSS/SQL-injection protections, safe error handling).
+Securis treats security as a feature, not an afterthought. The controls below are enforced server-side and are visible in-app at `/settings`.
+
+| Area | Implementation |
+| --- | --- |
+| **Password hashing** | Argon2id (OWASP baseline params) via a single `security/password.ts` module; plaintext is never stored or logged |
+| **Sessions** | Opaque 256-bit token; only its **SHA-256 hash** is stored. HttpOnly, `SameSite=Lax`, `Secure` for HTTPS deployments; absolute TTL; revocable |
+| **Authorization** | RBAC enforced in the `(soc)` layout before streaming and again in every API route; UI hiding is never the boundary |
+| **Input validation** | Zod on every external input (auth, ingestion, all query params, every mutation body) |
+| **Rate limiting** | Sliding window per IP *and* per account for login; per-IP limits for ingestion, detection scans and simulations |
+| **CSRF** | Same-origin enforcement on all mutating routes + `SameSite=Lax` session cookie |
+| **SQL injection** | Prisma parameterises every query; no raw SQL anywhere |
+| **XSS** | React auto-escaping; no `dangerouslySetInnerHTML`, no `eval`, CSP restricting sources to `'self'` |
+| **Security headers** | CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS, COOP, CORP, `X-Permitted-Cross-Domain-Policies: none`, DNS prefetch off |
+| **Error handling** | Generic client-facing messages; internal detail (stack traces, database errors) logged server-side only |
+| **Secrets** | Only `.env.example` is committed; no secret values in source; the settings page reports configuration state, never values |
+| **Audit** | Append-only trail of every privileged action; no update/delete path |
+
+**Known limitation (documented):** the Content-Security-Policy allows `'unsafe-inline'` for scripts because Next.js injects inline hydration bootstrap. A nonce-based policy removing `'unsafe-inline'` is the documented next step.
 
 ## Roadmap
 
