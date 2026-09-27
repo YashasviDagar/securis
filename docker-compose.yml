@@ -1,15 +1,16 @@
 # =============================================================================
-# Securis - Docker Compose (development / self-hosted)
+# Securis - Docker Compose
 # =============================================================================
-# Starts PostgreSQL and the Securis application together:
+# Brings up PostgreSQL, applies migrations, then starts the application:
 #
+#   cp .env.example .env      # then set SESSION_SECRET and INGEST_API_KEY
 #   docker compose up --build
 #
-# Secrets are injected from the local `.env` file (copied from .env.example);
-# nothing sensitive is hard-coded here.
+# Optionally seed demo data:
 #
-# Note: for the fastest local workflow you can skip Docker entirely and run
-# `npx prisma dev` for the database plus `npm run dev` for the app.
+#   docker compose run --rm migrate npx prisma db seed --schema=database/prisma/schema.prisma
+#
+# All secrets come from `.env`; nothing sensitive is hard-coded here.
 # =============================================================================
 
 services:
@@ -31,25 +32,46 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-shot: applies migrations, then exits. The app waits for it to complete.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    container_name: securis-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
+    command: ["npx", "prisma", "migrate", "deploy", "--schema=database/prisma/schema.prisma"]
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner
     container_name: securis-app
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
-      # Override in .env to point at Neon or another managed PostgreSQL.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
-      SHADOW_DATABASE_URL: ${SHADOW_DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql://securis:securis@postgres:5432/securis}
       SESSION_SECRET: ${SESSION_SECRET}
+      SESSION_TTL_MINUTES: ${SESSION_TTL_MINUTES:-480}
       INGEST_API_KEY: ${INGEST_API_KEY}
       APP_URL: ${APP_URL:-http://localhost:3000}
+      LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-5}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-300}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-120}
+      API_RATE_LIMIT_WINDOW_SECONDS: ${API_RATE_LIMIT_WINDOW_SECONDS:-60}
     ports:
       - "${APP_PORT:-3000}:3000"
 
 volumes:
   securis-pgdata:
+
