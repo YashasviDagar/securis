@@ -1,6 +1,7 @@
 import { getCurrentSession } from "@/auth/current-user";
 import { hasPermission } from "@/auth/rbac";
 import { runDetection } from "@/server/detection";
+import { checkApiRateLimit } from "@/server/http/rate-limit";
 import {
   describeError,
   getClientIp,
@@ -38,6 +39,14 @@ export async function POST(request: Request) {
     if (!session) return jsonError("Not authenticated.", 401);
     if (!hasPermission(session.user.role, "detection:run")) {
       return jsonError("Forbidden.", 403);
+    }
+
+    // Detection scans are expensive; throttle them per source IP.
+    const limit = checkApiRateLimit(getClientIp(request), "detection-scan");
+    if (!limit.allowed) {
+      return jsonError("Rate limit exceeded. Please retry later.", 429, {
+        retryAfterSeconds: limit.retryAfterSeconds,
+      });
     }
 
     // Body is optional; tolerate an empty request.
