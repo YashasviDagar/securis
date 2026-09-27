@@ -1,139 +1,254 @@
 # Securis
 
-**Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
+**Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events from multiple sources, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises scored alerts, and supports incident investigation and response — with a complete, immutable audit trail.
 
-> **Status: Phase 20 of 22 — Docker & Deployment.** All functionality, hardening, tests and containerisation are complete. The final phases cover full documentation and a closing quality audit.
+> **Status: Phase 21 of 22 — Documentation.** The platform is complete and documented; the final phase performs a closing quality audit across the whole project.
 
 ---
 
-## What is SIEM?
+## Table of contents
 
-**SIEM** stands for *Security Information and Event Management*. A SIEM platform combines two capabilities:
+1. [Project overview](#1-project-overview)
+2. [What is SIEM?](#2-what-is-siem)
+3. [Problem statement](#3-problem-statement)
+4. [Features](#4-features)
+5. [Architecture](#5-architecture)
+6. [System workflow](#6-system-workflow)
+7. [Tech stack](#7-tech-stack)
+8. [Database architecture](#8-database-architecture)
+9. [Detection engine](#9-detection-engine)
+10. [Detection rules](#10-detection-rules)
+11. [Risk scoring](#11-risk-scoring)
+12. [Alert management](#12-alert-management)
+13. [Incident management](#13-incident-management)
+14. [Threat intelligence](#14-threat-intelligence)
+15. [Attack simulation](#15-attack-simulation)
+16. [Authentication](#16-authentication)
+17. [RBAC](#17-rbac)
+18. [Installation](#18-installation)
+19. [Environment variables](#19-environment-variables)
+20. [Docker setup](#20-docker-setup)
+21. [Testing](#21-testing)
+22. [Screenshots](#22-screenshots)
+23. [Future improvements](#23-future-improvements)
+
+---
+
+## 1. Project overview
+
+Securis is a working SIEM/SOC console built as a single Next.js application. It ingests security telemetry through a hardened API, normalises it into a canonical event model, stores it in PostgreSQL, and runs a database-driven detection engine over it. Detections become scored alerts, alerts become incidents, and every privileged action is written to an append-only audit trail.
+
+It is designed to demonstrate **security engineering**, not just a dashboard: rules are data, scoring is deterministic and explainable, authorization is enforced server-side, and the whole pipeline is testable.
+
+## 2. What is SIEM?
+
+**SIEM** stands for *Security Information and Event Management*. It combines two capabilities:
 
 - **SIM (Security Information Management)** — long-term collection, storage and analysis of log/event data.
 - **SEM (Security Event Management)** — real-time monitoring, correlation and alerting on security-relevant events.
 
-In practice a SIEM is the central nervous system of a Security Operations Center (SOC): it ingests logs from many sources, finds the signals in the noise, and gives analysts the context they need to investigate and respond.
+A SIEM is the central nervous system of a Security Operations Center (SOC): it ingests logs from many sources, finds the signal in the noise, and gives analysts the context to investigate and respond.
 
-## Problem statement
+## 3. Problem statement
 
-Security telemetry is scattered. Authentication systems, web applications, APIs and servers each emit logs in their own format, and no single system correlates them. As a result, attacks such as brute force, credential stuffing, account takeover and privilege escalation go unnoticed until it is too late.
+Security telemetry is scattered. Authentication systems, web applications, APIs, servers and databases each emit logs in their own format, and nothing correlates them. As a result, attacks such as brute force, credential stuffing, account takeover and privilege escalation go unnoticed until it is too late — and even when noticed, there is no consistent workflow to investigate and record the response.
 
-Securis addresses this by providing a single pipeline:
+Securis addresses this with a single, auditable pipeline:
 
 ```
 Collect → Validate → Normalise → Store → Analyse → Detect → Alert → Score → Investigate → Resolve → Audit
 ```
 
-## Features (by phase)
+## 4. Features
 
 | Phase | Area | Status |
 | --- | --- | --- |
-| 1 | Project foundation, SOC UI shell, routing | ✅ Complete |
-| 2 | Database architecture (Prisma + PostgreSQL) | ✅ Complete |
-| 3 | Authentication & RBAC | ✅ Complete |
-| 4 | Log ingestion pipeline | ✅ Complete |
-| 5 | Event management | ✅ Complete |
-| 6 | Detection engine | ✅ Complete |
-| 7 | Security detection rules (7 rules) | ✅ Complete |
-| 8 | Risk scoring | ✅ Complete |
-| 9 | Alert management | ✅ Complete |
-| 10 | Incident management | ✅ Complete |
-| 11 | Threat intelligence | ✅ Complete |
-| 12 | Detection rule management | ✅ Complete |
-| 13 | Security operations dashboard | ✅ Complete |
-| 14 | Attack simulation lab | ✅ Complete |
-| 15 | Audit logging | ✅ Complete |
-| 16 | User management | ✅ Complete |
-| 17 | Global search | ✅ Complete |
-| 18 | Security hardening | ✅ Complete |
-| 19 | Automated testing | ✅ Complete |
-| 20 | Docker & deployment | ✅ Complete |
-| 21 | Documentation | ⏳ Planned |
-| 22 | Final quality check | ⏳ Planned |
+| 1 | Project foundation, SOC UI shell, routing | ✅ |
+| 2 | Database architecture (Prisma + PostgreSQL) | ✅ |
+| 3 | Authentication & RBAC | ✅ |
+| 4 | Log ingestion pipeline | ✅ |
+| 5 | Event management | ✅ |
+| 6 | Detection engine | ✅ |
+| 7 | Security detection rules (7 rules) | ✅ |
+| 8 | Risk scoring | ✅ |
+| 9 | Alert management | ✅ |
+| 10 | Incident management | ✅ |
+| 11 | Threat intelligence | ✅ |
+| 12 | Detection rule management | ✅ |
+| 13 | Security operations dashboard | ✅ |
+| 14 | Attack simulation lab | ✅ |
+| 15 | Audit logging | ✅ |
+| 16 | User management | ✅ |
+| 17 | Global search | ✅ |
+| 18 | Security hardening | ✅ |
+| 19 | Automated testing | ✅ |
+| 20 | Docker & deployment | ✅ |
+| 21 | Documentation | ✅ |
+| 22 | Final quality check | ⏳ |
 
-## Tech stack
+Highlights:
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | Next.js (App Router), React, TypeScript |
-| Styling | Tailwind CSS v4, shadcn/ui, Recharts |
-| Backend | Next.js server components, route handlers, TypeScript |
-| Database | PostgreSQL, Prisma ORM |
-| Auth | Custom Argon2id hashing + database-backed sessions (Phase 3) |
-| Infra | Docker, Docker Compose, Git, GitHub Actions |
+- A protected ingestion API that normalises **8 source types** and never trusts client input.
+- A **database-driven** detection engine with 6 rule strategies and 7 built-in rules.
+- **Deterministic, explainable** risk scoring with an itemised factor breakdown.
+- A full analyst workflow: alert triage, notes, assignment, incidents and resolutions.
+- A local threat-intelligence database that feeds risk scoring.
+- An attack simulation lab that drives the **real** pipeline.
+- Server-enforced RBAC, an append-only audit trail and a 64-test automated suite.
 
-## Architecture
+## 5. Architecture
 
 ```mermaid
 flowchart TD
-    A[Event Sources<br/>Auth · Web · API · Server] --> B[Ingestion API]
-    B --> C[Validation &amp; Normalisation]
-    C --> D[(PostgreSQL)]
-    D --> E[Detection Engine]
-    E --> F[Alerts]
-    F --> G[Risk Scoring]
-    G --> H[Incidents]
-    H --> I[Audit Log]
-    D --> J[SOC Dashboard]
-    F --> J
-    H --> J
+    subgraph Sources["Event sources"]
+        A1[Authentication service]
+        A2[Web application]
+        A3[API gateway]
+        A4[Servers / DB / network]
+        A5[Simulation lab]
+    end
+
+    subgraph Ingest["Ingestion"]
+        B1["POST /api/ingest<br/>(API key or session)"]
+        B2[Zod validation]
+        B3[Parser per sourceType]
+        B4[Normaliser]
+        B5[Semantic validator]
+    end
+
+    subgraph Data["PostgreSQL"]
+        D1[(SecurityEvent)]
+        D2[(DetectionRule)]
+        D3[(Alert)]
+        D4[(Incident)]
+        D5[(ThreatIndicator)]
+        D6[(User / LoginSession)]
+        D7[(AuditLog)]
+    end
+
+    subgraph Detect["Detection"]
+        E1[Detection engine]
+        E2[Risk scoring]
+        E3[Threat-intel matcher]
+    end
+
+    subgraph UI["SOC console (Next.js)"]
+        F1[Dashboard]
+        F2[Events]
+        F3[Alerts]
+        F4[Incidents]
+        F5[Detection rules]
+        F6[Threat intelligence]
+        F7[Simulation]
+        F8[Users / Audit / Search]
+    end
+
+    A1 & A2 & A3 & A4 & A5 --> B1 --> B2 --> B3 --> B4 --> B5 --> D1
+    D2 --> E1
+    D1 --> E1 --> E2 --> D3
+    E3 --> E2
+    D3 --> D4
+    D3 & D4 & D1 & D5 & D6 & D7 --> UI
 ```
+
+Deeper diagrams (component, data-flow, ERD) live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ### Code organisation
 
 ```
 app/          Routes and API handlers (thin layer, no business logic)
-components/   UI: ui/ (shadcn), layout/ (shell), shared/ (reusable states)
-lib/          Client-side helpers, navigation model, validation schemas
+components/   UI: ui/ (shadcn), layout/, shared/, and one folder per domain
+lib/          Client-safe helpers: query validation, URL builders
 server/       Business logic: services, detection engine, ingestion, threat intel
-database/     Prisma schema, migrations and seed data
-auth/         Session handling and RBAC helpers (Phase 3)
-security/     Headers, CSRF, rate limiting, password policy (Phase 3+)
+database/     Prisma schema, migrations and seed
+auth/         Session handling and RBAC helpers
+security/     Password hashing and policy
 types/        Shared domain types
-utils/        Pure utility functions
-tests/        Automated test suites (Phase 19)
+utils/        Pure utilities (formatting, IP classification, errors)
+tests/        Unit, integration and security suites
 ```
 
-## Database architecture
+**Layering rule:** UI components never touch the database; route handlers stay thin and delegate to `server/services/**`; each domain owns its Prisma queries so indexes and projections live in one place.
 
-The schema lives in [`database/prisma/schema.prisma`](./database/prisma/schema.prisma) and models the full SIEM pipeline.
+## 6. System workflow
 
-| Model | Role in the pipeline |
+```mermaid
+sequenceDiagram
+    participant C as Collector
+    participant API as /api/ingest
+    participant P as Pipeline
+    participant DB as PostgreSQL
+    participant E as Detection engine
+    participant A as Analyst
+
+    C->>API: POST events (X-Ingest-Key)
+    API->>API: validate auth + rate limit
+    API->>P: ingestEvents()
+    P->>P: parse → normalise → validate
+    P->>DB: insert SecurityEvent rows
+    P->>E: runDetection()
+    E->>DB: load enabled rules + recent events
+    E->>E: evaluate (threshold / correlation / …)
+    E->>E: score risk (severity, volume, TI, …)
+    E->>DB: upsert Alert (idempotent)
+    A->>DB: triage alert → assign, note, resolve
+    A->>DB: escalate to Incident
+    DB-->>A: audit trail of every action
+```
+
+## 7. Tech stack
+
+| Layer | Technology |
 | --- | --- |
-| `SecurityEvent` | Normalised telemetry — the core record every collector produces |
-| `DetectionRule` | Database-stored rules the detection engine evaluates (rules are data, not code) |
-| `Alert` | A detection that fired, linked to its rule and related events |
-| `Incident` | A coordinated investigation built from one or more alerts |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript (strict) |
+| Styling | Tailwind CSS v4, shadcn/ui, Recharts |
+| Backend | Next.js server components + route handlers, TypeScript |
+| Database | PostgreSQL 16, Prisma ORM |
+| Auth | Argon2id (`@node-rs/argon2`), database-backed sessions |
+| Validation | Zod |
+| Testing | Vitest |
+| Infra | Docker, Docker Compose, Git, GitHub Actions-ready |
+
+No Python is used; the entire platform is TypeScript, which keeps the detection and ingestion logic in one runtime and one test setup.
+
+## 8. Database architecture
+
+The schema lives in [`database/prisma/schema.prisma`](./database/prisma/schema.prisma).
+
+| Model | Role |
+| --- | --- |
+| `SecurityEvent` | Normalised telemetry — the core record |
+| `DetectionRule` | Database-stored rules the engine evaluates |
+| `Alert` | A detection that fired, linked to its rule and events |
+| `Incident` | A coordinated investigation built from alerts |
 | `ThreatIndicator` | Local threat intelligence (IP / domain / hash / URL) |
-| `AuditLog` | Immutable record of every privileged action |
+| `AuditLog` | Append-only record of privileged actions |
 | `User` | Analyst / administrator accounts with RBAC roles |
-| `LoginSession` | Database-backed sessions (only a token hash is stored) |
+| `LoginSession` | Database-backed sessions (token hash only) |
 
-Key relationships:
-
+```mermaid
+erDiagram
+    User ||--o{ LoginSession : has
+    User ||--o{ Alert : assigned
+    User ||--o{ Incident : assigned
+    User ||--o{ DetectionRule : created
+    User ||--o{ AuditLog : actor
+    Alert }o--|| DetectionRule : produced_by
+    Alert }o--o{ SecurityEvent : relates_to
+    Alert }o--o{ Incident : grouped_into
+    Incident }o--o{ SecurityEvent : relates_to
+    Alert ||--o{ AlertNote : has
+    Incident ||--o{ IncidentNote : has
+    ThreatIndicator ||--o{ AuditLog : tracked_by
 ```
-SecurityEvent >──< Alert >──< Incident
-DetectionRule ──< Alert
-User ──< LoginSession · Alert(assignee) · Incident(assignee) · DetectionRule(creator) · AuditLog(actor)
-Alert ──< AlertNote >── User        Incident ──< IncidentNote >── User
-```
 
-Indexes are chosen for the query patterns of later phases: event filtering
-(`timestamp`, `sourceIp`, `username`, `eventType`, `severity` plus time-series
-composites), the alert queue (`status`, `severity`, `(status,severity)`), and
-the audit trail (`action`, `actorId`, `(targetType,targetId)`).
+Indexes are chosen for the real query patterns: event filtering (`timestamp`, `sourceIp`, `username`, `eventType`, `severity` plus time-series composites), the alert queue (`status`, `severity`, `(status, severity)`), the audit trail (`action`, `actorId`, `(targetType, targetId)`) and indicator lookup (`(type, value)` unique).
 
 ### Seed data
 
-`npm run db:seed` creates a deterministic, realistic dataset: 5 users, 7
-detection rules, 8 threat indicators, **757 security events**, 7 alerts, 3
-incidents, login sessions and 31 audit-log entries. The events include seven
-scripted attack scenarios (brute force, account takeover, privilege escalation,
-API abuse, unauthorized access, sensitive-resource access and a suspicious login
-pattern) that the Phase 6/7 detection engine genuinely re-detects.
+`npm run db:seed` produces a deterministic dataset (5 users, 7 rules, 8 indicators, 757 events, 9 alerts, 3 incidents, login sessions and ~42 audit entries). Crucially, the seeded alerts are **produced by running the detection engine**, then triaged — the seed cannot mask a broken rule.
 
-Development credentials created by the seed (never used in production):
+Development credentials (never used in production):
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -141,163 +256,59 @@ Development credentials created by the seed (never used in production):
 | SECURITY_ANALYST | `analyst@securis.local` | `SecurisAnalyst#2026` |
 | VIEWER | `viewer@securis.local` | `SecurisViewer#2026` |
 
-Passwords are hashed with **Argon2id** before storage.
+## 9. Detection engine
 
-## Authentication & RBAC
+The engine evaluates **database-stored rules** against stored events. Rules are data, not code, so they can be created, tuned, enabled and disabled from `/detection-rules` without a deployment.
 
-Securis uses a custom, database-backed session system (no third-party auth provider) so the security engineering is explicit and auditable.
-
-**Authentication**
-
-- Passwords are hashed with **Argon2id** (OWASP baseline parameters) and verified with the same module used by the seed — plaintext is never stored or logged.
-- On login the server creates an opaque 256-bit token, stores only its **SHA-256 hash** in `LoginSession`, and returns the token in an **HttpOnly, SameSite=Lax** cookie (`Secure` automatically for HTTPS deployments).
-- Sessions have an absolute expiry, are refreshed lazily (`lastSeenAt`, throttled) and can be revoked individually. Expired sessions are deleted and recorded as `SESSION_EXPIRED`.
-- **Rate limiting** is applied per source IP *and* per account using a sliding window (default 5 attempts / 5 minutes).
-- **Account-enumeration resistance:** unknown email, wrong password and disabled account all return the same generic message, and a dummy hash is verified when the account does not exist so response timing does not reveal whether an email is registered.
-- A **disabled account loses access immediately**, even with a valid session.
-
-**Role-based access control**
-
-| Role | Capabilities |
-| --- | --- |
-| `ADMIN` | Manage users, detection rules, alerts, incidents and audit logs; view all events |
-| `SECURITY_ANALYST` | View events, investigate/update alerts, manage incidents, maintain threat intel, run simulations |
-| `VIEWER` | Read-only access to the console |
-
-Authorization is enforced **server-side** in two places: the authenticated `(soc)` layout checks the route's required permission before streaming (returning a real HTTP 307 on denial), and each protected page repeats the check with `requirePermission` as defence in depth. Hiding a navigation item is a convenience only — it is never the security boundary.
-
-**Audit trail** — every authentication event is recorded: `LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `SESSION_CREATED`, `SESSION_EXPIRED` and `SESSION_REVOKED`.
-
-**API endpoints**
-
-| Method | Route | Purpose |
+| Rule type | Behaviour | Used by |
 | --- | --- | --- |
-| `POST` | `/api/auth/login` | Authenticate and issue a session cookie |
-| `POST` | `/api/auth/logout` | Revoke the session and clear the cookie |
-| `GET` | `/api/auth/session` | Return the current user (401 when unauthenticated) |
-
-## Log ingestion
-
-Security events enter Securis through a single normalising pipeline:
-
-```
-Raw event → Zod validation → parser → normaliser → semantic validation → SecurityEvent → PostgreSQL
-```
-
-The endpoint accepts events from **web applications, authentication systems, APIs, servers, databases, networks, infrastructure and applications**. Each `sourceType` has a parser that reconciles the producer's vocabulary (`user` / `principal` / `client_ip` / `status_code`, …) onto the canonical model, so collectors can forward their native payload in a `raw` field without pre-formatting it.
-
-**Authentication** — `POST /api/ingest` accepts either an `X-Ingest-Key` header (compared in constant time) or an authenticated session whose role holds `events:ingest`. Rate limiting is applied per source IP.
-
-**Never trusting the client** — every field is validated: unknown keys are stripped, `sourceType`/`severity` are mapped to the canonical enums, IPs are validated, timestamps are checked for plausibility, messages and metadata are size-capped, and per-event rejections are reported by index so a collector can retry only what failed.
-
-```bash
-curl -X POST http://localhost:3000/api/ingest \
-  -H "Content-Type: application/json" \
-  -H "X-Ingest-Key: $INGEST_API_KEY" \
-  -d '{
-    "timestamp": "2026-09-22T10:42:21Z",
-    "source": "authentication-service",
-    "sourceType": "AUTH",
-    "eventType": "LOGIN_FAILED",
-    "severity": "MEDIUM",
-    "username": "admin",
-    "sourceIp": "192.168.1.50",
-    "message": "Failed authentication attempt"
-  }'
-```
-
-Response (`202 Accepted`, or `400` when every event in the batch was rejected):
-
-```json
-{
-  "ok": true,
-  "data": {
-    "received": 1,
-    "accepted": 1,
-    "rejected": 0,
-    "eventIds": ["..."],
-    "errors": []
-  }
-}
-```
-
-A batch of up to 500 events may be sent as a JSON array. Collectors may also forward a native payload:
-
-```json
-{
-  "source": "authentication-service",
-  "sourceType": "AUTH",
-  "raw": { "user": "Bob", "ip": "10.0.0.5", "outcome": "failed" }
-}
-```
-
-This is normalised to `LOGIN_FAILED` with severity `MEDIUM`, username `bob`, source IP `10.0.0.5`, and the original payload preserved under `metadata.raw`.
-
-## Event management
-
-`/events` is a server-rendered explorer. All filtering, sorting and pagination are executed by the database — the browser only ever receives the current page of rows, never the full event set.
-
-- **Filters:** free-text search (message, username, source, event type, resource, IPs), severity, source type, source, event type, status, username, source IP and an inclusive date range.
-- **Sorting:** click any of the Timestamp / Severity / Event type / Source column headers to toggle ascending/descending.
-- **Pagination:** page size 25/50/100 with first/last/neighbour page links.
-- **URL-driven state:** the whole view lives in the query string, so every filter combination is shareable and works without client-side JavaScript.
-- **Detail view** (`/events/[id]`): timestamp, source, event type, severity, username, source/destination IP, user agent, resource, action, status, message, raw metadata, and the alerts and incidents the event contributed to.
-
-The same data is available programmatically via `GET /api/events` and `GET /api/events/[id]` (requires the `events:read` permission).
-
-## Detection engine
-
-The detection engine evaluates **database-stored rules** against stored events. Rules are data, not code, so they can be tuned, enabled and disabled without a deployment.
-
-Each rule has a `ruleType` that selects an evaluator, and a JSON `condition` document validated against a schema for that type:
-
-| Rule type | Evaluator behaviour | Used by |
-| --- | --- | --- |
-| `EVENT_MATCH` | Fires when events match the filters, grouped by user/IP | Privilege escalation, sensitive-resource access |
-| `THRESHOLD` | Counts matching events per group in a window; fires at the threshold | Brute force, unauthorized access |
+| `EVENT_MATCH` | Fires when events match filters, grouped by user/IP | Privilege escalation, sensitive-resource access |
+| `THRESHOLD` | Counts matching events per group in a window | Brute force, unauthorized access |
 | `TIME_WINDOW` | As threshold, tuned for high-rate windows | API abuse |
 | `IP_BASED` | Threshold grouped by source IP | (available for custom rules) |
 | `CORRELATION` | Relates failures followed by a success for the same group, optionally from a new IP | Account takeover |
-| `USER_BASED` | Behavioural signals: new IP, new device, off-hours, failures before success | Suspicious login pattern |
+| `USER_BASED` | Behavioural signals: new IP, new device, off-hours, prior failures | Suspicious login pattern |
 
-**Idempotent by design.** Every finding carries a dedupe key of `ruleCode:groupValue:windowBucket`. Re-running detection over the same events updates the existing alert (refreshing `lastSeen`, risk score and related events) instead of creating duplicates — so detection runs safely on every ingestion.
+Key properties:
 
-**Deterministic risk scoring.** Every finding is scored 0–100 by a documented, reproducible model — no randomness — with an itemised factor breakdown that the UI renders so an analyst can see *why* an alert scored what it did. See [Risk scoring](#risk-scoring).
+- **Idempotent.** Each finding carries a dedupe key `ruleCode:groupValue:windowBucket`; re-running detection updates the existing alert (refreshing `lastSeen`, risk and linked events) instead of creating duplicates.
+- **Graceful.** A rule whose condition fails validation is reported and skipped; one failing rule never aborts a run.
+- **Bounded.** Caps on matched events, evidence rows and groups keep a run predictable.
+- **Reusable.** The engine is invoked after ingestion, from `POST /api/detection/scan`, and by the simulation lab.
 
-**Entry points**
+## 10. Detection rules
 
-| Trigger | Path |
-| --- | --- |
-| After events are ingested | `server/ingestion/pipeline.ts` |
-| Manual / backfill scan | `POST /api/detection/scan` (requires `detection:run`) |
-| Attack simulation lab | Phase 14 |
+Seven rules ship with Securis, stored in the database:
 
-## Risk scoring
+| Code | Rule | Type | Severity | Condition | Threshold / window |
+| --- | --- | --- | --- | --- | --- |
+| `BRUTE_FORCE_001` | Brute Force Detection | `THRESHOLD` | HIGH | `LOGIN_FAILED` grouped by source IP | ≥ 5 in 300 s |
+| `ACCOUNT_TAKEOVER_001` | Possible Account Takeover | `CORRELATION` | CRITICAL | failures → success for a username from a new IP | ≥ 3 failures in 600 s |
+| `PRIVILEGE_ESCALATION_001` | Suspicious Privilege Escalation | `EVENT_MATCH` | HIGH | `ADMIN_PRIVILEGE_GRANTED`, `USER_ROLE_CHANGED` | — |
+| `API_ABUSE_001` | Abnormal API Activity | `TIME_WINDOW` | MEDIUM | `API_REQUEST` grouped by source IP | ≥ 100 in 60 s |
+| `UNAUTHORIZED_ACCESS_001` | Possible Unauthorized Access Attempt | `THRESHOLD` | MEDIUM | `401`/`403` grouped by source IP | ≥ 10 in 300 s |
+| `SENSITIVE_RESOURCE_ACCESS_001` | Sensitive Resource Access | `EVENT_MATCH` | HIGH | web/API access to `/admin`, `/users`, `/config`, `/database`, `.env` | — |
+| `SUSPICIOUS_LOGIN_PATTERN_001` | Suspicious Login Pattern | `USER_BASED` | MEDIUM | new IP + new device + off-hours + prior failures | ≥ 3 of 4 signals in 900 s |
 
-Every detection is scored **0–100** by a deterministic model: identical inputs always produce the same score, so detections are reproducible and testable. Each contribution is recorded as a factor and shown in the UI.
+Rules can legitimately overlap (defence in depth); each alert names the rule that produced it.
+
+## 11. Risk scoring
+
+Every detection is scored **0–100** by a deterministic model — identical inputs always produce the same score — with an itemised breakdown shown in the UI.
 
 | Factor | Contribution |
 | --- | --- |
-| **Base severity** | `SEVERITY_WEIGHTS[severity] × 6` → INFO 6 · LOW 12 · MEDIUM 30 · HIGH 48 · CRITICAL 60 |
-| **Frequency** | `min(20, round(eventCount / threshold × 10))` — only for rules with a real threshold |
-| **Detection rule** | CORRELATION +8 · USER_BASED +6 · THRESHOLD +4 · IP_BASED/TIME_WINDOW +3 · EVENT_MATCH +2 |
-| **Target account** | +3 when an account is targeted, **+9 more** if it is a privileged account (`admin`, `root`, …) |
-| **Source IP** | +5 when recorded, +5 more when publicly routable |
-| **Threat intelligence** | `min(20, round(confidence / 5))` when the source IP matches a local indicator |
-| **Repeated behaviour** | `min(15, priorOccurrences × 3)` — how often this rule+group fired in earlier windows |
+| Base severity | `SEVERITY_WEIGHTS[severity] × 6` → INFO 6 · LOW 12 · MEDIUM 30 · HIGH 48 · CRITICAL 60 |
+| Frequency | `min(20, round(eventCount / threshold × 10))` (rules with a real threshold) |
+| Detection rule | CORRELATION +8 · USER_BASED +6 · THRESHOLD +4 · IP_BASED/TIME_WINDOW +3 · EVENT_MATCH +2 |
+| Target account | +3 when targeted, **+9 more** for a privileged account |
+| Source IP | +5 when recorded, +5 more when publicly routable |
+| Threat intelligence | `min(20, round(confidence / 5))` when the source IP matches a local indicator |
+| Repeated behaviour | `min(15, priorOccurrences × 3)` |
 
-The total is clamped to 0–100 and mapped to a band:
+Bands: **0–25 Low**, **26–50 Moderate**, **51–75 High**, **76–100 Critical**.
 
-| Score | Band |
-| --- | --- |
-| 0–25 | Low |
-| 26–50 | Moderate |
-| 51–75 | High |
-| 76–100 | Critical |
-
-Threat-intelligence matches come from the local indicator database through a dedicated service layer (`server/threat-intel/matcher.ts`), so external feeds can be added later without touching detection code. IP classification is **private vs public routing only** — Securis makes no geolocation claims.
-
-Example (brute force against `admin` from a known malicious IP):
+Example — brute force against `admin` from a known malicious IP:
 
 ```
 +48  Base severity HIGH
@@ -311,187 +322,79 @@ Example (brute force against `admin` from a known malicious IP):
 = 103 → clamped to 100 (Critical)
 ```
 
-The score and its factor breakdown are stored on the alert (`riskScore`, `riskFactors`) and rendered wherever alerts appear.
+IP handling is **routing classification only** (private vs public) — Securis makes no geolocation claims.
 
-## Alert management
+## 12. Alert management
 
-`/alerts` is the analyst triage queue. Like the event explorer it is server-rendered and fully URL-driven.
+`/alerts` is the analyst triage queue, server-rendered and URL-driven.
 
-- **Filters:** free-text search (title, description, IP, user), severity, status, detection rule, source IP, target user, assignment (assigned / unassigned) and a created-date range.
-- **Sorting:** severity, risk score, status, first seen, last seen and created.
-- **Pagination:** page size 25/50/100.
-- **Detail view** (`/alerts/[id]`): severity, status, risk score with its full factor breakdown, detection rule, source/target, first/last seen, assignment, related events, related incidents, notes, and a merged **investigation timeline**.
+- **Filters:** free-text search, severity, status, detection rule, source IP, target user, assignment and a created-date range.
+- **Sorting / pagination:** severity, risk score, status, first/last seen, created; 25/50/100 per page.
+- **Detail view:** severity, status, risk score with its full factor breakdown, rule, source/target, timing, assignment, related events, related incidents, notes and a merged **investigation timeline**.
+- **Workflow:** change status (`NEW`, `INVESTIGATING`, `RESOLVED`, `FALSE_POSITIVE`), assign an analyst, add notes, mark false positive or resolve. `RESOLVED`/`FALSE_POSITIVE` stamp `resolvedAt`.
 
-Analysts can:
+API: `GET /api/alerts`, `GET|PATCH /api/alerts/[id]`, `POST /api/alerts/[id]/notes` (`alerts:read` / `alerts:write`).
 
-| Action | Endpoint | Permission |
-| --- | --- | --- |
-| Change status (`NEW`, `INVESTIGATING`, `RESOLVED`, `FALSE_POSITIVE`) | `PATCH /api/alerts/[id]` | `alerts:write` |
-| Assign / unassign an analyst | `PATCH /api/alerts/[id]` | `alerts:write` |
-| Add a note | `POST /api/alerts/[id]/notes` | `alerts:write` |
-| Mark false positive / resolve | quick actions (status shortcuts) | `alerts:write` |
+## 13. Incident management
 
-`RESOLVED` and `FALSE_POSITIVE` stamp `resolvedAt`; any other status clears it. Every mutation writes an audit entry (`ALERT_STATUS_CHANGED`, `ALERT_ASSIGNED`, `ALERT_NOTE_ADDED`). The permission is enforced on the server — the actions panel is only hidden for read-only roles, and the API returns `403` regardless of the UI.
+`/incidents` is the response board.
 
-## Incident management
+- **Create from alerts** — from the board or directly from an alert. The incident inherits the **highest severity** of the selected alerts and links the **union of their events**; references are sequential (`INC-2026-001`).
+- **Lifecycle:** `OPEN` → `INVESTIGATING` → `CONTAINED` → `RESOLVED` → `CLOSED`. `RESOLVED`/`CLOSED` stamp `resolvedAt`.
+- **Detail view:** reference, severity, status, assignment, created/updated/resolved, related alerts, related events, resolution, notes and the investigation timeline.
+- **Workflow:** change status, assign an analyst, record the resolution, add notes.
 
-An incident is a coordinated investigation built from one or more alerts. `/incidents` is the response board.
+API: `GET|POST /api/incidents`, `GET|PATCH /api/incidents/[id]`, `POST /api/incidents/[id]/notes`.
 
-- **Create** from alerts — either from the incident board (pick from the highest-risk open alerts) or directly from an alert's detail page ("Create incident"). The incident inherits the **highest severity** of the selected alerts and links the **union of their events**, so its timeline is complete from the start.
-- **Reference** is generated sequentially per year: `INC-2026-001`, `INC-2026-002`, …
-- **Filters:** search (reference/title/description), severity, status, assigned analyst, assigned/unassigned and a created-date range.
-- **Sorting:** reference, severity, status, created and updated. Pagination 25/50/100.
-- **Detail view** (`/incidents/[id]`): reference, severity, status, assignment, created/updated/resolved, related alerts, related events, notes, the resolution and the merged investigation timeline.
+## 14. Threat intelligence
 
-| Action | Endpoint | Permission |
-| --- | --- | --- |
-| Create from alerts | `POST /api/incidents` | `incidents:write` |
-| Change status (`OPEN`, `INVESTIGATING`, `CONTAINED`, `RESOLVED`, `CLOSED`) | `PATCH /api/incidents/[id]` | `incidents:write` |
-| Assign / unassign an analyst | `PATCH /api/incidents/[id]` | `incidents:write` |
-| Record / edit the resolution | `PATCH /api/incidents/[id]` | `incidents:write` |
-| Add a note | `POST /api/incidents/[id]/notes` | `incidents:write` |
+`/threat-intelligence` is the local indicator database that feeds risk scoring.
 
-`RESOLVED` and `CLOSED` stamp `resolvedAt`. Every change is audited (`INCIDENT_CREATED`, `INCIDENT_UPDATED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_NOTE_ADDED`).
+- Indicators have a **type** (`IP`, `DOMAIN`, `HASH`, `URL`), value, threat type, confidence (0–100), source, description, timestamps and an active flag.
+- **Search & filter:** free text, type, threat type, source, minimum confidence, active/retired.
+- **Add / edit** with per-type value validation (IPv4/IPv6, domain, MD5/SHA-1/SHA-256, http(s) URL). Duplicates return `409`.
+- **Retire** (keeps history, excludes from scoring) or **delete**.
+- All access goes through `server/threat-intel/`; external feeds would plug in behind that boundary. **No API keys or feed URLs exist in the codebase.**
 
-## Threat intelligence
+API: `GET|POST /api/threat-intelligence`, `GET|PATCH|DELETE /api/threat-intelligence/[id]`.
 
-`/threat-intelligence` is the local indicator database — the source of the threat-intelligence factor in risk scoring. Active indicators are consulted by the risk engine; when an event's source IP matches one, the alert's risk score is raised.
+## 15. Attack simulation
 
-Indicators have a **type** (`IP`, `DOMAIN`, `HASH`, `URL`), **value**, **threat type**, **confidence** (0–100), **source**, **description**, first/last-seen timestamps and an **active** flag.
-
-- **Search & filter:** free text (value, threat type, source, description), type, threat type, source, minimum confidence and active/retired status.
-- **Add / edit** indicators with format validation per type (IPv4/IPv6, domain, MD5/SHA-1/SHA-256 hex, http(s) URL).
-- **Retire** an indicator (keeps it for history but excludes it from risk scoring) or **delete** it.
-- Duplicate indicators (same type + value) are rejected with `409`.
-
-| Action | Endpoint | Permission |
-| --- | --- | --- |
-| List / search | `GET /api/threat-intelligence` | `threat-intel:read` |
-| Add | `POST /api/threat-intelligence` | `threat-intel:write` |
-| Update / retire | `PATCH /api/threat-intelligence/[id]` | `threat-intel:write` |
-| Delete | `DELETE /api/threat-intelligence/[id]` | `threat-intel:write` |
-
-**External integrations stay isolated.** All indicator access goes through `server/threat-intel/` (`matcher.ts` for lookups, `service.ts` for CRUD). A real feed integration would slot in behind that boundary; no API keys or feed URLs exist anywhere in the codebase, and detection code never talks to a provider directly. Audit actions: `THREAT_INDICATOR_ADDED`, `THREAT_INDICATOR_UPDATED`, `THREAT_INDICATOR_DELETED`.
-
-## Detection rules
-
-Seven rules ship with Securis. They are stored in the database and evaluated by the engine — nothing is hard-coded in the UI.
-
-| Code | Rule | Type | Severity | Condition | Threshold / window |
-| --- | --- | --- | --- | --- | --- |
-| `BRUTE_FORCE_001` | Brute Force Detection | `THRESHOLD` | HIGH | `LOGIN_FAILED` grouped by source IP | ≥ 5 in 300 s |
-| `ACCOUNT_TAKEOVER_001` | Possible Account Takeover | `CORRELATION` | CRITICAL | failures → success for a username from a **new IP** | ≥ 3 failures in 600 s |
-| `PRIVILEGE_ESCALATION_001` | Suspicious Privilege Escalation | `EVENT_MATCH` | HIGH | `ADMIN_PRIVILEGE_GRANTED`, `USER_ROLE_CHANGED` | — |
-| `API_ABUSE_001` | Abnormal API Activity | `TIME_WINDOW` | MEDIUM | `API_REQUEST` grouped by source IP | ≥ 100 in 60 s |
-| `UNAUTHORIZED_ACCESS_001` | Possible Unauthorized Access Attempt | `THRESHOLD` | MEDIUM | `401`/`403` grouped by source IP | ≥ 10 in 300 s |
-| `SENSITIVE_RESOURCE_ACCESS_001` | Sensitive Resource Access | `EVENT_MATCH` | HIGH | web/API access to `/admin`, `/users`, `/config`, `/database`, `.env` | — |
-| `SUSPICIOUS_LOGIN_PATTERN_001` | Suspicious Login Pattern | `USER_BASED` | MEDIUM | new IP + new device + off-hours + prior failures | ≥ 3 of 4 signals in 900 s |
-
-Each rule produces a clearly titled alert (`Possible Brute Force Attack`, `Possible Account Takeover`, `Suspicious Privilege Escalation`, `Abnormal API Activity`, `Possible Unauthorized Access Attempt`, `Sensitive Resource Access`, `Suspicious Login Pattern`) linked to the events that triggered it.
-
-**Rules can overlap by design.** The same activity may legitimately satisfy more than one rule (for example, a login that is both a takeover and a suspicious-login pattern). This is defence in depth, not duplication — each alert carries the rule that produced it.
-
-The seeded database is generated by **actually running the engine**: `npm run db:seed` creates the attack scenarios, invokes detection, and then layers analyst triage (assignment, status, resolution) on top of the resulting alerts.
-
-## Detection rule management
-
-`/detection-rules` is the administrator-only management surface for the rules the engine evaluates. Because rules are **data stored in the database**, changes take effect on the next detection run with no deployment.
-
-- **Table:** rule code, name, type, severity, threshold, time window, enabled status, alerts produced and last-updated, with search, severity/type/status filters, sorting and pagination.
-- **Detail view** (`/detection-rules/[id]`): the full metadata, the **raw condition document** (so an administrator can see exactly what the engine evaluates) and the most recent alerts the rule produced.
-- **Create / edit** with a type-aware condition form: the fields change with the rule type (`EVENT_MATCH`, `THRESHOLD`, `TIME_WINDOW`, `IP_BASED`, `CORRELATION`, `USER_BASED`), and the server validates the condition against the same schema the engine uses — a rule can never be stored in a shape the engine cannot evaluate.
-- **Enable / disable** — disabled rules are skipped by the engine (verified: a scan after disabling a rule produced no alerts for it).
-- **Delete** — the rule stops being evaluated; alerts it already produced are kept (their rule reference is cleared).
-
-| Action | Endpoint | Permission |
-| --- | --- | --- |
-| List | `GET /api/detection-rules` | `rules:read` |
-| Create | `POST /api/detection-rules` | `rules:write` |
-| Detail | `GET /api/detection-rules/[id]` | `rules:read` |
-| Update / enable / disable | `PATCH /api/detection-rules/[id]` | `rules:write` |
-| Delete | `DELETE /api/detection-rules/[id]` | `rules:write` |
-
-Duplicate rule codes are rejected with `409`. Audit actions: `RULE_CREATED`, `RULE_UPDATED`, `RULE_ENABLED`, `RULE_DISABLED`, `RULE_DELETED` (a change that only flips `enabled` is recorded as enabled/disabled rather than a generic update).
-
-## Security operations dashboard
-
-`/dashboard` is the SOC overview. **Every number is aggregated from the database at request time — there are no hard-coded statistics.**
-
-Headline metrics: total events, events today, critical alerts (open), high alerts (open), open incidents, active users and suspicious IPs (distinct source IPs seen in alerts).
-
-Charts (Recharts):
-
-| Chart | Source |
-| --- | --- |
-| Events over time | daily event counts, last 14 days |
-| Alerts over time | daily alert counts, last 14 days |
-| Events by severity | `groupBy severity` |
-| Events by source | `groupBy source` |
-| Events by event type | `groupBy eventType` |
-| Top source IPs | `groupBy sourceIp` |
-| Top targeted users | `groupBy username` |
-| Authentication outcomes | successful vs failed logins (donut) |
-
-A **Recent alerts** table shows the latest detections with severity, risk score, rule, source IP, target user and status. All aggregations live in `server/services/dashboard-service.ts`; the charts are thin client components that receive the already-aggregated data.
-
-## Attack simulation lab
-
-`/simulation` generates **controlled local attack traffic** that flows through the real ingestion and detection pipeline — nothing is mocked, and nothing leaves the application.
+`/simulation` generates controlled local attack traffic through the **real** ingestion and detection pipeline.
 
 | Scenario | Generates | Expected detection |
 | --- | --- | --- |
-| Simulate Brute Force | 6 failed logins from one IP | `BRUTE_FORCE_001` |
-| Simulate Account Takeover | 4 failures + a success from a new IP | `ACCOUNT_TAKEOVER_001` |
-| Simulate Privilege Escalation | role change + privilege grant | `PRIVILEGE_ESCALATION_001` |
-| Simulate API Abuse | 105 API requests in under a minute | `API_ABUSE_001` |
-| Simulate Unauthorized Access | 12 × 401/403 from one IP | `UNAUTHORIZED_ACCESS_001` |
-| Generate Normal Traffic | ordinary logins, views, API calls, health checks | none (baseline) |
+| Brute Force | 6 failed logins from one IP | `BRUTE_FORCE_001` |
+| Account Takeover | 4 failures + a success from a new IP | `ACCOUNT_TAKEOVER_001` |
+| Privilege Escalation | role change + privilege grant | `PRIVILEGE_ESCALATION_001` |
+| API Abuse | 105 API requests in under a minute | `API_ABUSE_001` |
+| Unauthorized Access | 12 × 401/403 from one IP | `UNAUTHORIZED_ACCESS_001` |
+| Normal Traffic | ordinary activity | none (baseline) |
 
-Each run posts to `POST /api/simulation` (`simulation:run`), which builds the events, calls the **same `ingestEvents` pipeline** used by the ingestion API, and returns the outcome (events accepted, alerts created/updated, findings). The panel then links directly to the alerts that were raised.
+Simulated events are tagged `metadata.simulation = true` and use RFC 5737 documentation addresses, so they are always distinguishable from real telemetry. Every run is a `SIMULATION_RUN` audit entry.
 
-Simulated events are tagged `metadata.simulation = true` and use **RFC 5737 documentation addresses** (`198.51.100.0/24`), so they are always distinguishable from real telemetry. Every run is recorded as a `SIMULATION_RUN` audit entry. The lab only ever operates on Securis' own test data.
+## 16. Authentication
 
-## Audit logging
+- **Argon2id** password hashing (OWASP baseline parameters); plaintext is never stored or logged.
+- **Database-backed sessions:** an opaque 256-bit token is returned in an **HttpOnly**, `SameSite=Lax` cookie (`Secure` for HTTPS deployments); only its **SHA-256 hash** is stored.
+- Sessions have an absolute TTL, are refreshed lazily, and can be revoked individually or in bulk.
+- **Rate limiting** per source IP *and* per account on login.
+- **Account-enumeration resistance:** unknown email, wrong password and disabled account all return the same generic message, and a dummy hash is verified when the account does not exist so response timing reveals nothing.
+- **Disabled accounts lose access immediately** — their sessions are revoked.
 
-`/audit-logs` is the **append-only** record of every privileged action, written automatically since Phase 3. There is no write endpoint — the UI can only read.
+API: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session`.
 
-Recorded actions include authentication (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `SESSION_*`), user administration (`USER_CREATED`, `ROLE_CHANGED`, `USER_DISABLED`), alerts (`ALERT_CREATED`, `ALERT_STATUS_CHANGED`, `ALERT_ASSIGNED`, `ALERT_NOTE_ADDED`), incidents (`INCIDENT_CREATED`, `INCIDENT_UPDATED`, `INCIDENT_RESOLVED`, `INCIDENT_CLOSED`, `INCIDENT_NOTE_ADDED`), rules (`RULE_CREATED`, `RULE_UPDATED`, `RULE_ENABLED`, `RULE_DISABLED`, `RULE_DELETED`), threat intelligence (`THREAT_INDICATOR_ADDED`, `THREAT_INDICATOR_UPDATED`, `THREAT_INDICATOR_DELETED`), ingestion and detection (`EVENT_INGESTED`, `DETECTION_SCAN`, `SIMULATION_RUN`).
+## 17. RBAC
 
-Each entry records **actor** (id + denormalised email), **action**, **target** (type, id, label), **timestamp**, **IP address**, **user agent** and **metadata**. The explorer supports free-text search (actor, target, IP), action, actor, target-type and IP filters, a date range, sorting and pagination. Metadata is viewable inline.
+| Role | Capabilities |
+| --- | --- |
+| `ADMIN` | Manage users, detection rules, alerts, incidents and audit logs; view all events |
+| `SECURITY_ANALYST` | View events, investigate/update alerts, manage incidents, maintain threat intel, run simulations |
+| `VIEWER` | Read-only access to the console |
 
-Administrator-only: the page and the API both require `audit:read`; the trail is never editable by ordinary users.
+Authorization is enforced **server-side**: the authenticated `(soc)` layout checks each route's required permission before streaming (returning a real HTTP 307 on denial), every page repeats the check, and every API route re-checks the permission. Hiding a navigation item is a convenience, never the boundary.
 
-## User management
-
-`/users` is the administrator-only account surface.
-
-- **List:** name, email, role, active status, last login, session count and assigned alert/incident counts, with search, role/status filters, sorting and pagination.
-- **Create** an account with a policy-compliant password (Argon2id-hashed before storage). Duplicate emails are rejected with `409`; weak passwords with `400`.
-- **Edit** the name, role or active state.
-- **Enable / disable.** Disabling an account **immediately revokes all of its sessions**, so access ends without waiting for the session to expire.
-- **Detail view** (`/users/[id]`): the account, its **login history** (IP, user agent, started/last-seen/expires, derived ACTIVE/EXPIRED/REVOKED status) and its **recent activity** (the audit entries it produced).
-
-| Action | Endpoint | Permission |
-| --- | --- | --- |
-| List | `GET /api/users` | `users:read` |
-| Create | `POST /api/users` | `users:write` |
-| Detail | `GET /api/users/[id]` | `users:read` |
-| Update name/role/active | `PATCH /api/users/[id]` | `users:write` |
-
-An administrator **cannot disable their own account** (`400`), preventing a lock-out. Every administrative action is audited (`USER_CREATED`, `USER_UPDATED`, `ROLE_CHANGED`, `USER_ENABLED`, `USER_DISABLED`).
-
-## Global search
-
-`/search` applies one term across **every entity type** — events, alerts, incidents, threat indicators and users — and shows a preview of each group with the total match count.
-
-- Each group links to the module's own explorer (`/events?search=…`, `/alerts?search=…`, and so on), so the full, paginated, filterable list is one click away.
-- Search delegates to each domain's existing list service, so it respects the same indexes, filters and projections as the dedicated explorers.
-- **Permission-aware:** the users group is omitted entirely for roles that cannot read users, so search never exposes a resource the caller may not access.
-- Available programmatically via `GET /api/search?q=<term>`.
-
-Example terms: `192.168.1.50`, `admin`, `LOGIN_FAILED`, `BRUTE_FORCE`, `INC-2026-001`.
-
-## Getting started
+## 18. Installation
 
 ### Prerequisites
 
@@ -500,160 +403,159 @@ Example terms: `192.168.1.50`, `admin`, `LOGIN_FAILED`, `BRUTE_FORCE`, `INC-2026
 - PostgreSQL — either a local **Prisma Postgres** instance (`npx prisma dev`, no Docker required) or **Neon** in the cloud
 - Docker (optional, for the containerised workflow)
 
-### 1. Install dependencies
+### Steps
 
 ```bash
+# 1. Install dependencies
 npm install
+
+# 2. Configure the environment (only .env.example is committed)
+cp .env.example .env        # PowerShell: Copy-Item .env.example .env
+
+# 3. Start the development database (no Docker required)
+npx prisma dev --detach     # copy the printed URLs into DATABASE_URL / SHADOW_DATABASE_URL
+
+# 4. Apply migrations and seed
+npm run db:migrate
+npm run db:seed
+npm run db:verify           # optional: prints the seeded scenarios
+
+# 5. Run
+npm run dev                 # http://localhost:3000
 ```
 
-### 2. Configure the environment
-
-```bash
-cp .env.example .env      # PowerShell: Copy-Item .env.example .env
-```
-
-Fill in `DATABASE_URL`, `SHADOW_DATABASE_URL`, `SESSION_SECRET` and `INGEST_API_KEY`. **Never commit `.env`** — only `.env.example` is tracked.
-
-To generate a session secret:
+Generate a session secret:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 ```
 
-### 3. Start the database (development, no Docker)
-
-```bash
-npx prisma dev --detach
-```
-
-Copy the connection strings it prints into `.env`. See the [Prisma local Postgres docs](https://www.prisma.io/docs/local-development/postgres) for details.
-
-### 4. Apply migrations and seed
-
-```bash
-npm run db:migrate
-npm run db:seed
-npm run db:verify   # optional: prints the seeded data and attack scenarios
-```
-
-### 5. Run the app
-
-```bash
-npm run dev
-```
-
-Open <http://localhost:3000>.
-
-### Useful scripts
+### Scripts
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the development server |
+| `npm run dev` | Development server |
 | `npm run build` | Production build |
-| `npm run lint` | ESLint |
+| `npm run start` | Start the production server |
+| `npm run lint` / `lint:fix` | ESLint |
 | `npm run typecheck` | TypeScript, no emit |
-| `npm run db:migrate` | Apply Prisma migrations |
-| `npm run db:seed` | Seed the database with realistic data |
-| `npm run db:verify` | Run real queries to verify the seeded data |
-| `npm run db:studio` | Open Prisma Studio |
+| `npm test` / `test:watch` | Vitest suite |
+| `npm run db:migrate` | Apply migrations |
+| `npm run db:deploy` | Apply migrations (production) |
+| `npm run db:seed` | Seed realistic data |
+| `npm run db:verify` | Verify seeded data with real queries |
+| `npm run db:studio` | Prisma Studio |
+| `npm run db:reset` | Reset the database |
 
-## Docker
+## 19. Environment variables
 
-A complete Compose stack is provided: PostgreSQL, a one-shot migration service, and the application.
+See [`.env.example`](./.env.example) for the full, documented list. Summary:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Pooled PostgreSQL connection (app runtime) |
+| `SHADOW_DATABASE_URL` | Direct connection (migrations / shadow DB) |
+| `SESSION_SECRET` | Signs/derives session and CSRF material |
+| `SESSION_TTL_MINUTES` | Session lifetime |
+| `INGEST_API_KEY` | Shared secret for the ingestion API |
+| `APP_URL` | Public base URL (drives the cookie `Secure` flag) |
+| `LOGIN_RATE_LIMIT_*` | Login throttling |
+| `API_RATE_LIMIT_*` | Generic API / ingestion throttling |
+| `POSTGRES_*`, `DOCKER_DATABASE_URL` | Docker Compose database settings |
+
+Only `.env.example` is committed; `.env` is gitignored.
+
+## 20. Docker setup
 
 ```bash
-cp .env.example .env            # then set SESSION_SECRET, INGEST_API_KEY, POSTGRES_PASSWORD
+cp .env.example .env            # set SESSION_SECRET, INGEST_API_KEY, POSTGRES_PASSWORD
 docker compose up --build
-```
-
-The stack starts in this order: `postgres` (healthy) → `migrate` (applies Prisma migrations, then exits) → `app` (waits for the migration to complete).
-
-Seed demo data (optional):
-
-```bash
 docker compose run --rm migrate npx prisma db seed --schema=database/prisma/schema.prisma
 ```
 
-The app is served at <http://localhost:3000>.
+The stack starts `postgres` → one-shot `migrate` → `app`. The Dockerfile has four stages (`deps`, `builder`, `migrator`, `runner`); the runtime image is non-root, uses Next's standalone output, and includes a healthcheck.
 
-### Dockerfile stages
+> **Note:** Docker was not available in the environment where Securis was built, so the image and Compose stack are authored and lint/build-verified but were not executed there. The native workflow (`npx prisma dev` + `npm run dev`) was used throughout.
 
-| Stage | Purpose |
-| --- | --- |
-| `deps` | `npm ci` (includes devDependencies for the migrator) |
-| `builder` | `prisma generate` + `next build` (standalone output) |
-| `migrator` | Applies migrations / runs the seed; used by the compose `migrate` service |
-| `runner` | Minimal non-root runtime image running `node server.js` |
-
-Notes:
-
-- The runtime image runs as an unprivileged user and exposes a container healthcheck against `/login`.
-- `NEXT_OUTPUT=standalone` is set in the builder, so the runtime image needs only the standalone server bundle plus the Prisma engine.
-- The compose stack uses `POSTGRES_*` / `DOCKER_DATABASE_URL` (not the local `DATABASE_URL`), so it never accidentally connects to a development database.
-
-## Deployment checklist
-
-1. **Provision PostgreSQL** — Neon (recommended) or any managed Postgres. Use a **pooled** connection string for the app and a **direct** string for migrations.
-2. **Set environment variables** — copy `.env.example` and fill in `DATABASE_URL`, `SESSION_SECRET` (long random value), `INGEST_API_KEY`, `APP_URL` (HTTPS in production).
-3. **Apply migrations** — `npm run db:deploy` (or the compose `migrate` service).
-4. **Seed (optional)** — `npm run db:seed` for a demo dataset.
-5. **Build and start** — `npm run build` then `npm run start`, or `docker compose up --build`.
-6. **Verify** — `/login` loads, a session cookie is issued over HTTPS with the `Secure` flag, and the security headers are present.
-
-> **Note:** Docker is not installed in the development environment used to build Securis, so the Dockerfile and Compose file are authored and lint/build-verified but were not executed here. The native workflow (`npx prisma dev` + `npm run dev`) was used throughout.
-
-## Environment variables
-
-See [`.env.example`](./.env.example) for the full, documented list.
-
-## Testing
+## 21. Testing
 
 ```bash
-npm test          # run the suite once
-npm run test:watch
+npm test
 ```
 
-The suite (Vitest) is split into unit, integration and security coverage:
+64 tests across 8 files:
 
-| Suite | What it covers |
+| Suite | Coverage |
 | --- | --- |
-| `tests/unit/rbac.test.ts` | Permission model per role; viewers have no write capabilities |
-| `tests/unit/password.test.ts` | Argon2id hashing, verification, password policy |
+| `tests/unit/rbac.test.ts` | Permission model per role |
+| `tests/unit/password.test.ts` | Argon2id hashing, verification, policy |
 | `tests/unit/ingestion.test.ts` | Parser, normaliser, validator |
 | `tests/unit/risk.test.ts` | Deterministic scoring, factors, bands |
 | `tests/unit/validation.test.ts` | Condition/query validation, rate limiter, IP classification |
 | `tests/integration/detection.test.ts` | 5 failures → alert, 4 → none, outside window → none, takeover, API abuse, event match, idempotency |
-| `tests/integration/auth.test.ts` | Correct/incorrect password, disabled account, unknown email, login rate limiting |
-| `tests/integration/session.test.ts` | Token entropy, hash-only storage, revocation, expiry, disabled-account invalidation |
+| `tests/integration/auth.test.ts` | Correct/incorrect password, disabled account, unknown email, rate limiting |
+| `tests/integration/session.test.ts` | Token hashing, revocation, expiry, disabled-account invalidation |
 
-Integration tests run against the real database. They create their own isolated fixtures (unique rule codes and event types) and clean up afterwards, so they neither depend on nor disturb the seeded data. Because the embedded development database accepts a single connection, `vitest.config.ts` disables file parallelism.
+Integration tests create their own isolated fixtures and clean up afterwards, so they never disturb the seeded data.
 
-**Result: 64 tests across 8 files — all passing.**
+## 22. Screenshots
+
+The console is dark-only and responsive. To capture screenshots for a portfolio or README, sign in and visit:
+
+| Screen | Route | What to capture |
+| --- | --- | --- |
+| Sign in | `/login` | The login card over the SOC backdrop |
+| Dashboard | `/dashboard` | Stat cards + charts + recent alerts |
+| Events | `/events` | Filter bar + event table, then an event detail with metadata |
+| Alerts | `/alerts` | The triage queue, then an alert detail with the risk breakdown and timeline |
+| Incidents | `/incidents` | The response board, then an incident timeline |
+| Threat intelligence | `/threat-intelligence` | Indicator table with confidence bars |
+| Detection rules | `/detection-rules` | Rule table, then a rule detail showing its condition |
+| Attack simulation | `/simulation` | A scenario run and its resulting alert |
+| Users | `/users` | Account table, then a user's login history |
+| Audit logs | `/audit-logs` | The audit trail with metadata expanded |
+| Global search | `/search` | Grouped results for an IP or username |
+| Settings | `/settings` | Security posture summary |
+
+Suggested location: `docs/screenshots/<name>.png` (referenced from this section).
+
+## 23. Future improvements
+
+- **Nonce-based CSP** to remove `'unsafe-inline'` from `script-src`.
+- **Redis-backed rate limiting** so limits survive restarts and scale horizontally.
+- **Background detection worker** (queue) instead of synchronous post-ingestion runs.
+- **Real threat-intelligence feeds** behind the existing service layer, with feed-health monitoring.
+- **Password change / reset flow** with re-authentication.
+- **MITRE ATT&CK mapping** on rules and alerts.
+- **Notification channels** (email, Slack, webhook) for high-risk alerts.
+- **Saved searches** and per-analyst dashboards.
+- **CSV/JSON export** for events, alerts and audit logs.
+- **Full E2E tests** (Playwright) covering the browser workflows.
+
+---
 
 ## Security
 
-Securis treats security as a feature, not an afterthought. The controls below are enforced server-side and are visible in-app at `/settings`.
-
 | Area | Implementation |
 | --- | --- |
-| **Password hashing** | Argon2id (OWASP baseline params) via a single `security/password.ts` module; plaintext is never stored or logged |
-| **Sessions** | Opaque 256-bit token; only its **SHA-256 hash** is stored. HttpOnly, `SameSite=Lax`, `Secure` for HTTPS deployments; absolute TTL; revocable |
-| **Authorization** | RBAC enforced in the `(soc)` layout before streaming and again in every API route; UI hiding is never the boundary |
-| **Input validation** | Zod on every external input (auth, ingestion, all query params, every mutation body) |
-| **Rate limiting** | Sliding window per IP *and* per account for login; per-IP limits for ingestion, detection scans and simulations |
-| **CSRF** | Same-origin enforcement on all mutating routes + `SameSite=Lax` session cookie |
-| **SQL injection** | Prisma parameterises every query; no raw SQL anywhere |
-| **XSS** | React auto-escaping; no `dangerouslySetInnerHTML`, no `eval`, CSP restricting sources to `'self'` |
-| **Security headers** | CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS, COOP, CORP, `X-Permitted-Cross-Domain-Policies: none`, DNS prefetch off |
-| **Error handling** | Generic client-facing messages; internal detail (stack traces, database errors) logged server-side only |
-| **Secrets** | Only `.env.example` is committed; no secret values in source; the settings page reports configuration state, never values |
-| **Audit** | Append-only trail of every privileged action; no update/delete path |
+| Password hashing | Argon2id; plaintext never stored or logged |
+| Sessions | Opaque token, hash-only storage, HttpOnly/SameSite/Secure cookie, TTL, revocation |
+| Authorization | RBAC enforced in the layout and every API route |
+| Input validation | Zod on every external input |
+| Rate limiting | Login (per IP + account), ingestion, scans, simulations |
+| CSRF | Same-origin enforcement on mutations + `SameSite=Lax` |
+| SQL injection | Prisma parameterises everything; no raw SQL |
+| XSS | React escaping, no `dangerouslySetInnerHTML`/`eval`, restrictive CSP |
+| Headers | CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS, COOP, CORP |
+| Error handling | Generic client messages; internals logged server-side only |
+| Secrets | `.env.example` only; no secrets in source; settings reports configuration state, not values |
+| Audit | Append-only trail of every privileged action |
 
-**Known limitation (documented):** the Content-Security-Policy allows `'unsafe-inline'` for scripts because Next.js injects inline hydration bootstrap. A nonce-based policy removing `'unsafe-inline'` is the documented next step.
+**Known limitation:** `script-src` allows `'unsafe-inline'` because Next.js injects inline hydration bootstrap; a nonce-based policy is the documented next step.
 
 ## Roadmap
 
-The project is built strictly phase by phase. See the feature table above. Each phase must lint, build and pass its checks before the next begins.
+All 22 phases are complete. The project is built strictly phase by phase, with per-file commits, a private phase-notes log, and a build/lint/test gate at every phase. See [Future improvements](#23-future-improvements) for what comes next.
 
 ## License
 
