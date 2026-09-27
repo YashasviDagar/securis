@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 19 of 22 — Automated Testing.** All functionality is complete, hardened, and covered by an automated test suite (64 tests across unit, integration and security suites). The remaining phases cover Docker/deployment and final documentation.
+> **Status: Phase 20 of 22 — Docker & Deployment.** All functionality, hardening, tests and containerisation are complete. The final phases cover full documentation and a closing quality audit.
 
 ---
 
@@ -48,7 +48,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 17 | Global search | ✅ Complete |
 | 18 | Security hardening | ✅ Complete |
 | 19 | Automated testing | ✅ Complete |
-| 20 | Docker & deployment | ⏳ Planned |
+| 20 | Docker & deployment | ✅ Complete |
 | 21 | Documentation | ⏳ Planned |
 | 22 | Final quality check | ⏳ Planned |
 
@@ -559,10 +559,48 @@ Open <http://localhost:3000>.
 
 ## Docker
 
+A complete Compose stack is provided: PostgreSQL, a one-shot migration service, and the application.
+
 ```bash
-cp .env.example .env   # then set SESSION_SECRET and INGEST_API_KEY
+cp .env.example .env            # then set SESSION_SECRET, INGEST_API_KEY, POSTGRES_PASSWORD
 docker compose up --build
 ```
+
+The stack starts in this order: `postgres` (healthy) → `migrate` (applies Prisma migrations, then exits) → `app` (waits for the migration to complete).
+
+Seed demo data (optional):
+
+```bash
+docker compose run --rm migrate npx prisma db seed --schema=database/prisma/schema.prisma
+```
+
+The app is served at <http://localhost:3000>.
+
+### Dockerfile stages
+
+| Stage | Purpose |
+| --- | --- |
+| `deps` | `npm ci` (includes devDependencies for the migrator) |
+| `builder` | `prisma generate` + `next build` (standalone output) |
+| `migrator` | Applies migrations / runs the seed; used by the compose `migrate` service |
+| `runner` | Minimal non-root runtime image running `node server.js` |
+
+Notes:
+
+- The runtime image runs as an unprivileged user and exposes a container healthcheck against `/login`.
+- `NEXT_OUTPUT=standalone` is set in the builder, so the runtime image needs only the standalone server bundle plus the Prisma engine.
+- The compose stack uses `POSTGRES_*` / `DOCKER_DATABASE_URL` (not the local `DATABASE_URL`), so it never accidentally connects to a development database.
+
+## Deployment checklist
+
+1. **Provision PostgreSQL** — Neon (recommended) or any managed Postgres. Use a **pooled** connection string for the app and a **direct** string for migrations.
+2. **Set environment variables** — copy `.env.example` and fill in `DATABASE_URL`, `SESSION_SECRET` (long random value), `INGEST_API_KEY`, `APP_URL` (HTTPS in production).
+3. **Apply migrations** — `npm run db:deploy` (or the compose `migrate` service).
+4. **Seed (optional)** — `npm run db:seed` for a demo dataset.
+5. **Build and start** — `npm run build` then `npm run start`, or `docker compose up --build`.
+6. **Verify** — `/login` loads, a session cookie is issued over HTTPS with the `Secure` flag, and the security headers are present.
+
+> **Note:** Docker is not installed in the development environment used to build Securis, so the Dockerfile and Compose file are authored and lint/build-verified but were not executed here. The native workflow (`npx prisma dev` + `npm run dev`) was used throughout.
 
 ## Environment variables
 
