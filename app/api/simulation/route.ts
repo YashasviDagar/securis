@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/auth/current-user";
 import { hasPermission } from "@/auth/rbac";
 import { runSimulation } from "@/server/simulation/service";
 import { recordAudit } from "@/server/services/audit-service";
+import { checkApiRateLimit } from "@/server/http/rate-limit";
 import {
   describeError,
   getClientIp,
@@ -39,6 +40,14 @@ export async function POST(request: Request) {
     if (!session) return jsonError("Not authenticated.", 401);
     if (!hasPermission(session.user.role, "simulation:run")) {
       return jsonError("Forbidden.", 403);
+    }
+
+    // Simulations ingest and detect in bulk; throttle them per source IP.
+    const limit = checkApiRateLimit(getClientIp(request), "simulation");
+    if (!limit.allowed) {
+      return jsonError("Rate limit exceeded. Please retry later.", 429, {
+        retryAfterSeconds: limit.retryAfterSeconds,
+      });
     }
 
     let body: unknown;
