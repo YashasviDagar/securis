@@ -118,6 +118,24 @@ export function resetRateLimit(key: string): void {
   buckets.delete(key);
 }
 
+/**
+ * Generic API rate limit used by expensive endpoints (detection scans,
+ * simulations). Limits are read from the environment and applied per source IP
+ * and per scope, so one noisy endpoint cannot exhaust another's budget.
+ *
+ * @param ip    Client IP (already extracted from the request).
+ * @param scope A short name for the endpoint, e.g. "simulation".
+ */
+export function checkApiRateLimit(ip: string, scope: string): RateLimitResult {
+  const max = Number(process.env.API_RATE_LIMIT_MAX ?? "120");
+  const windowSeconds = Number(process.env.API_RATE_LIMIT_WINDOW_SECONDS ?? "60");
+  return consumeRateLimit(
+    `api:${scope}:${ip}`,
+    Number.isFinite(max) && max > 0 ? max : 120,
+    Number.isFinite(windowSeconds) && windowSeconds > 0 ? windowSeconds : 60,
+  );
+}
+
 /** Test/maintenance helper: clear all limiter state. */
 export function resetAllRateLimits(): void {
   buckets.clear();
