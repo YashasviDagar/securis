@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events from multiple sources, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises scored alerts, and supports incident investigation and response — with a complete, immutable audit trail.
 
-> **Status: Phase 21 of 22 — Documentation.** The platform is complete and documented; the final phase performs a closing quality audit across the whole project.
+> **Status: complete.** All 22 build phases are finished. `lint`, `typecheck`, `build` and the 64-test suite all pass, and every route has been verified end to end.
 
 ---
 
@@ -84,7 +84,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 19 | Automated testing | ✅ |
 | 20 | Docker & deployment | ✅ |
 | 21 | Documentation | ✅ |
-| 22 | Final quality check | ⏳ |
+| 22 | Final quality check | ✅ |
 
 Highlights:
 
