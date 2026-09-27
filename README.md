@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 16 of 22 — User Management.** All core SIEM functionality plus the audit trail and user administration are in place. The remaining phases add global search, hardening, tests, Docker and documentation.
+> **Status: Phase 17 of 22 — Global Search.** All core SIEM functionality plus the audit trail, user administration and cross-entity global search are in place. The remaining phases add hardening, tests, Docker and documentation.
 
 ---
 
@@ -45,7 +45,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 14 | Attack simulation lab | ✅ Complete |
 | 15 | Audit logging | ✅ Complete |
 | 16 | User management | ✅ Complete |
-| 17 | Global search | ⏳ Planned |
+| 17 | Global search | ✅ Complete |
 | 18 | Security hardening | ⏳ Planned |
 | 19 | Automated testing | ⏳ Planned |
 | 20 | Docker & deployment | ⏳ Planned |
@@ -479,6 +479,17 @@ Administrator-only: the page and the API both require `audit:read`; the trail is
 | Update name/role/active | `PATCH /api/users/[id]` | `users:write` |
 
 An administrator **cannot disable their own account** (`400`), preventing a lock-out. Every administrative action is audited (`USER_CREATED`, `USER_UPDATED`, `ROLE_CHANGED`, `USER_ENABLED`, `USER_DISABLED`).
+
+## Global search
+
+`/search` applies one term across **every entity type** — events, alerts, incidents, threat indicators and users — and shows a preview of each group with the total match count.
+
+- Each group links to the module's own explorer (`/events?search=…`, `/alerts?search=…`, and so on), so the full, paginated, filterable list is one click away.
+- Search delegates to each domain's existing list service, so it respects the same indexes, filters and projections as the dedicated explorers.
+- **Permission-aware:** the users group is omitted entirely for roles that cannot read users, so search never exposes a resource the caller may not access.
+- Available programmatically via `GET /api/search?q=<term>`.
+
+Example terms: `192.168.1.50`, `admin`, `LOGIN_FAILED`, `BRUTE_FORCE`, `INC-2026-001`.
 
 ## Getting started
 
