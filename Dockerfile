@@ -1,23 +1,24 @@
 # =============================================================================
 # Securis - Production Dockerfile (multi-stage)
 # =============================================================================
-# Builds a small production image for the Next.js application.
+# Stages
+#   deps     : clean, reproducible dependency install
+#   builder  : Prisma client generation + Next.js production build (standalone)
+#   migrator : lightweight image that can apply migrations / seed the database
+#   runner   : minimal runtime image (non-root) serving the standalone server
 #
-# Stage 1 (deps)    : installs dependencies with a clean, reproducible install.
-# Stage 2 (builder) : generates the Prisma client and builds Next.js.
-# Stage 3 (runner)  : minimal runtime image containing only the standalone
-#                     server output.
-#
-# Connection: consumes DATABASE_URL at runtime (never at build time) so the
-# image stays environment-agnostic. See docker-compose.yml.
+# The image is environment-agnostic: DATABASE_URL and the secrets are provided
+# at runtime (see docker-compose.yml and .env.example).
 # =============================================================================
 
 # ---- Stage 1: dependencies -------------------------------------------------
 FROM node:22-alpine AS deps
 WORKDIR /app
-# Install libc compatibility shims required by some native dependencies.
+# libc compatibility shims for native dependencies.
 RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
+# `npm ci` installs devDependencies too, which the migrator stage needs
+# (prisma CLI, tsx).
 RUN npm ci
 
 # ---- Stage 2: build --------------------------------------------------------
@@ -25,19 +26,31 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Generate the Prisma client. A placeholder URL is supplied because `generate`
-# only reads the schema; it never connects to the database.
+# Generate the Prisma client. `generate` only reads the schema, so a
+# placeholder URL is sufficient and no database connection is made.
 ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db"
 RUN npx prisma generate --schema=database/prisma/schema.prisma
-# Enable Next.js standalone output for the runtime image (see next.config.ts).
+# Produce .next/standalone (see next.config.ts -> output).
 ENV NEXT_OUTPUT=standalone
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ---- Stage 3: runtime ------------------------------------------------------
+# ---- Stage 3: migrator -----------------------------------------------------
+# Used by `docker compose run --rm migrate` (and the one-shot compose service)
+# to apply migrations and optionally seed. Keeps the runtime image lean.
+FROM deps AS migrator
+WORKDIR /app
+COPY database ./database
+COPY package.json ./
+ENV DATABASE_URL="postgresql://user:pass@localhost:5432/db"
+CMD ["npx", "prisma", "migrate", "deploy", "--schema=database/prisma/schema.prisma"]
+
+# ---- Stage 4: runtime ------------------------------------------------------
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
 # Run as an unprivileged user.
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
@@ -45,6 +58,9 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Ensure the Prisma engine/client are present in the standalone bundle.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
 USER nextjs
 EXPOSE 3000
