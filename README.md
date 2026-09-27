@@ -2,7 +2,7 @@
 
 **Securis** is a full-stack **Security Information and Event Management (SIEM)** platform. It collects security events, validates and normalises them, stores them in PostgreSQL, analyses them with a rule-based detection engine, raises alerts, calculates deterministic risk scores, and supports incident investigation and response — all with a complete audit trail.
 
-> **Status: Phase 18 of 22 — Security Hardening.** All functionality is complete and the platform has undergone a full security hardening review (CSP and cross-origin headers, broader rate limiting, a security-posture settings page, and an audit for XSS/secret/raw-SQL patterns). The remaining phases add automated tests, Docker and documentation.
+> **Status: Phase 19 of 22 — Automated Testing.** All functionality is complete, hardened, and covered by an automated test suite (64 tests across unit, integration and security suites). The remaining phases cover Docker/deployment and final documentation.
 
 ---
 
@@ -47,7 +47,7 @@ Collect → Validate → Normalise → Store → Analyse → Detect → Alert �
 | 16 | User management | ✅ Complete |
 | 17 | Global search | ✅ Complete |
 | 18 | Security hardening | ✅ Complete |
-| 19 | Automated testing | ⏳ Planned |
+| 19 | Automated testing | ✅ Complete |
 | 20 | Docker & deployment | ⏳ Planned |
 | 21 | Documentation | ⏳ Planned |
 | 22 | Final quality check | ⏳ Planned |
@@ -567,6 +567,30 @@ docker compose up --build
 ## Environment variables
 
 See [`.env.example`](./.env.example) for the full, documented list.
+
+## Testing
+
+```bash
+npm test          # run the suite once
+npm run test:watch
+```
+
+The suite (Vitest) is split into unit, integration and security coverage:
+
+| Suite | What it covers |
+| --- | --- |
+| `tests/unit/rbac.test.ts` | Permission model per role; viewers have no write capabilities |
+| `tests/unit/password.test.ts` | Argon2id hashing, verification, password policy |
+| `tests/unit/ingestion.test.ts` | Parser, normaliser, validator |
+| `tests/unit/risk.test.ts` | Deterministic scoring, factors, bands |
+| `tests/unit/validation.test.ts` | Condition/query validation, rate limiter, IP classification |
+| `tests/integration/detection.test.ts` | 5 failures → alert, 4 → none, outside window → none, takeover, API abuse, event match, idempotency |
+| `tests/integration/auth.test.ts` | Correct/incorrect password, disabled account, unknown email, login rate limiting |
+| `tests/integration/session.test.ts` | Token entropy, hash-only storage, revocation, expiry, disabled-account invalidation |
+
+Integration tests run against the real database. They create their own isolated fixtures (unique rule codes and event types) and clean up afterwards, so they neither depend on nor disturb the seeded data. Because the embedded development database accepts a single connection, `vitest.config.ts` disables file parallelism.
+
+**Result: 64 tests across 8 files — all passing.**
 
 ## Security
 
